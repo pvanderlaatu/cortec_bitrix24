@@ -1,0 +1,183 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-09-23 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "mode",
+  "status",
+  "current_phase",
+  "run_cb",
+  "started_on",
+  "finished_on",
+  "delta_since",
+  "contadores_section",
+  "created_count",
+  "updated_count",
+  "contadores_cb",
+  "skipped_count",
+  "error_count",
+  "contadores_cb2",
+  "request_count",
+  "throttled_seconds",
+  "estado_fases_section",
+  "phase_state",
+  "summary"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Serie",
+   "options": "B24-RUN-.YYYY.-",
+   "default": "B24-RUN-.YYYY.-",
+   "hidden": 1
+  },
+  {
+   "fieldname": "mode",
+   "fieldtype": "Select",
+   "label": "Modo",
+   "options": "Dry Run\nReal",
+   "default": "Dry Run",
+   "in_list_view": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Estado",
+   "options": "Queued\nRunning\nCompleted\nFailed\nAborted",
+   "default": "Queued",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "current_phase",
+   "fieldtype": "Data",
+   "label": "Fase actual",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "run_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "started_on",
+   "fieldtype": "Datetime",
+   "label": "Inicio",
+   "read_only": 1
+  },
+  {
+   "fieldname": "finished_on",
+   "fieldtype": "Datetime",
+   "label": "Fin",
+   "read_only": 1
+  },
+  {
+   "fieldname": "delta_since",
+   "fieldtype": "Datetime",
+   "label": "Delta desde",
+   "description": "Solo se traen los registros con DATE_MODIFY posterior. Vacío = migración completa."
+  },
+  {
+   "fieldname": "contadores_section",
+   "fieldtype": "Section Break",
+   "label": "Contadores"
+  },
+  {
+   "fieldname": "created_count",
+   "fieldtype": "Int",
+   "label": "Creados",
+   "read_only": 1
+  },
+  {
+   "fieldname": "updated_count",
+   "fieldtype": "Int",
+   "label": "Actualizados",
+   "read_only": 1
+  },
+  {
+   "fieldname": "contadores_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "skipped_count",
+   "fieldtype": "Int",
+   "label": "Omitidos (sin cambios)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_count",
+   "fieldtype": "Int",
+   "label": "Errores",
+   "read_only": 1
+  },
+  {
+   "fieldname": "contadores_cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "request_count",
+   "fieldtype": "Int",
+   "label": "Peticiones HTTP al portal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "throttled_seconds",
+   "fieldtype": "Float",
+   "label": "Segundos en espera por rate limit",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "estado_fases_section",
+   "fieldtype": "Section Break",
+   "label": "Estado por fase"
+  },
+  {
+   "fieldname": "phase_state",
+   "fieldtype": "Code",
+   "label": "Cursores",
+   "options": "JSON",
+   "read_only": 1,
+   "description": "Por fase: si terminó, el último ID procesado y los contadores. Es lo que permite reanudar."
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Code",
+   "label": "Informe",
+   "options": "JSON",
+   "read_only": 1,
+   "description": "En dry-run: conteos previstos, usuarios sin mapear, estados sin mapear y campos UF sin destino."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-23 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Cortec Bitrix24",
+ "name": "Bitrix24 Migration Run",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "create": 1,
+   "write": 1,
+   "delete": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0,
+ "autoname": "naming_series:",
+ "naming_rule": "By \"Naming Series\" field",
+ "description": "Una fila por pasada de migración. Guarda los cursores de cada fase, de modo que una corrida interrumpida se reanuda donde quedó."
+}

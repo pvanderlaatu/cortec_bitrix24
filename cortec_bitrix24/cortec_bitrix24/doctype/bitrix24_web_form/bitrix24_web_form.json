@@ -1,0 +1,107 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-09-23 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "bitrix_form_id",
+  "form_name",
+  "is_active",
+  "webform_cb",
+  "entity_scheme",
+  "submissions",
+  "webform_mapping_section",
+  "mapping_json",
+  "webform_raw_section",
+  "raw_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "bitrix_form_id",
+   "fieldtype": "Data",
+   "label": "ID del formulario",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "form_name",
+   "fieldtype": "Data",
+   "label": "Nombre",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Activo en Bitrix24",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "webform_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "entity_scheme",
+   "fieldtype": "Data",
+   "label": "Entidades que crea",
+   "description": "Lo que el formulario crea en Bitrix24: lead, contact, deal o una combinación."
+  },
+  {
+   "fieldname": "submissions",
+   "fieldtype": "Int",
+   "label": "Envíos registrados"
+  },
+  {
+   "fieldname": "webform_mapping_section",
+   "fieldtype": "Section Break",
+   "label": "Mapeo de campos"
+  },
+  {
+   "fieldname": "mapping_json",
+   "fieldtype": "Code",
+   "label": "Campo del formulario → campo de Frappe",
+   "options": "JSON",
+   "description": "Lo que debe enviar el Worker leads-intake a cortec_helpdesk.api. Exportable con cortec_bitrix24.api.export_webform_mapping."
+  },
+  {
+   "fieldname": "webform_raw_section",
+   "fieldtype": "Section Break",
+   "label": "Definición original"
+  },
+  {
+   "fieldname": "raw_json",
+   "fieldtype": "Code",
+   "label": "JSON de Bitrix24",
+   "options": "JSON",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-23 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Cortec Bitrix24",
+ "name": "Bitrix24 Web Form",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "create": 1,
+   "write": 1,
+   "delete": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0,
+ "autoname": "format:{bitrix_form_id}",
+ "naming_rule": "Expression",
+ "title_field": "form_name",
+ "description": "Definición de un formulario web de Bitrix24, leída del portal. No se ejecuta: es el insumo para reapuntar el formulario del sitio al Worker leads-intake."
+}

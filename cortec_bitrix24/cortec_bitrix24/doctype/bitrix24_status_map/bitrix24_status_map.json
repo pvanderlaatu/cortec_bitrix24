@@ -1,0 +1,99 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-09-23 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "entity",
+  "bitrix_status_id",
+  "bitrix_label",
+  "category_id",
+  "statusmap_cb",
+  "status_doctype",
+  "crm_status",
+  "status_type"
+ ],
+ "fields": [
+  {
+   "fieldname": "entity",
+   "fieldtype": "Select",
+   "label": "Entidad",
+   "options": "Lead\nDeal",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "bitrix_status_id",
+   "fieldtype": "Data",
+   "label": "STATUS_ID / STAGE_ID en Bitrix24",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "bitrix_label",
+   "fieldtype": "Data",
+   "label": "Etiqueta en Bitrix24",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "category_id",
+   "fieldtype": "Data",
+   "label": "Embudo (CATEGORY_ID)",
+   "description": "Vacío para leads y para el embudo principal de deals."
+  },
+  {
+   "fieldname": "statusmap_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status_doctype",
+   "fieldtype": "Link",
+   "label": "Doctype de estado",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "crm_status",
+   "fieldtype": "Dynamic Link",
+   "label": "Estado en Frappe CRM",
+   "options": "status_doctype",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status_type",
+   "fieldtype": "Select",
+   "label": "Tipo",
+   "options": "Open\nOngoing\nWon\nLost",
+   "default": "Open"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-23 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Cortec Bitrix24",
+ "name": "Bitrix24 Status Map",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "create": 1,
+   "write": 1,
+   "delete": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0,
+ "autoname": "format:{entity}::{bitrix_status_id}",
+ "naming_rule": "Expression",
+ "title_field": "bitrix_label",
+ "description": "Etapa de Bitrix24 → estado de Frappe CRM. El campo 'status_type' determina si un Lead/Deal cuenta como abierto, de lo que depende el enrutado de WhatsApp de cortec_helpdesk."
+}

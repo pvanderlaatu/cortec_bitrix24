@@ -1,0 +1,394 @@
+# Copyright (C) 2026 Corporación de Tecnología CORTEC S.R.L.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CORTEC Bitrix24.
+#
+# CORTEC Bitrix24 is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# CORTEC Bitrix24 is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with CORTEC Bitrix24. If not, see <https://www.gnu.org/licenses/>.
+from __future__ import annotations
+
+"""
+cortec_bitrix24.migration.runner
+=================================
+Orquesta la corrida: contexto compartido, orden de fases, checkpoints y
+el silenciado de los avisos de cortec_helpdesk.
+
+El orden de las fases no es negociable — cada una necesita las
+correspondencias que dejó la anterior:
+
+    diccionarios → usuarios → campos UF → empresas → contactos →
+    leads → negociaciones → actividades → WhatsApp → adjuntos → formularios
+
+Cada fase guarda su cursor en el Bitrix24 Migration Run, así que una
+corrida interrumpida (worker reiniciado, portal caído) se reanuda donde
+quedó en vez de volver a empezar.
+"""
+
+import json
+import time
+from contextlib import contextmanager
+
+import frappe
+from frappe.utils import now_datetime
+
+from cortec_bitrix24.bitrix.client import get_client
+from cortec_bitrix24.bitrix.errors import B24FatalError
+from cortec_bitrix24.cortec_bitrix24.doctype.bitrix24_migration_settings.bitrix24_migration_settings import (
+    get_settings,
+)
+
+# Cada cuántos documentos se hace commit. Suficientemente alto para que
+# el coste de la transacción no domine, y suficientemente bajo para que
+# una caída no tire por la borda media hora de trabajo.
+COMMIT_EVERY = 200
+
+
+class MigrationContext:
+    """
+    Estado compartido por todas las fases.
+
+    Lleva el cliente REST, los contadores, el log y los cursores. Se
+    pasa como primer argumento a cada fase en vez de usar variables de
+    módulo, para que los tests puedan construir uno de mentira.
+    """
+
+    def __init__(self, run_name: str):
+        self.run_name = run_name
+        self.run = frappe.get_doc("Bitrix24 Migration Run", run_name)
+        self.settings = get_settings()
+
+        self.dry_run = self.run.mode == "Dry Run"
+        self.preserve_timestamps = bool(self.settings.preserve_timestamps)
+        self.country_code = self.settings.country_code or "506"
+        self.default_owner = self.settings.default_owner
+        self.batch_size = min(int(self.settings.batch_size or 50), 50)
+        self.delta_since = self.run.delta_since
+
+        self.client = get_client(logger=self._client_logger)
+
+        self.phase = ""
+        self.counters = {"created": 0, "updated": 0, "skipped": 0, "errors": 0}
+        self.phase_state = json.loads(self.run.phase_state or "{}")
+        self.summary = json.loads(self.run.summary or "{}")
+
+        self._since_commit = 0
+
+    # -----------------------------------------------------------------
+    # Contadores y checkpoints
+    # -----------------------------------------------------------------
+
+    def count(self, key: str, n: int = 1) -> None:
+        self.counters[key] = self.counters.get(key, 0) + n
+        self._since_commit += n
+        if self._since_commit >= COMMIT_EVERY:
+            self.checkpoint()
+
+    def checkpoint(self) -> None:
+        """Persiste contadores y cursores, y cierra la transacción."""
+        self._since_commit = 0
+        if self.dry_run:
+            # En seco no hay nada que confirmar, pero sí conviene
+            # refrescar los contadores para poder seguir el avance.
+            self._flush_run()
+            return
+
+        self._flush_run()
+        frappe.db.commit()
+
+    def _flush_run(self) -> None:
+        frappe.db.set_value(
+            "Bitrix24 Migration Run",
+            self.run_name,
+            {
+                "current_phase": self.phase,
+                "created_count": self.counters["created"],
+                "updated_count": self.counters["updated"],
+                "skipped_count": self.counters["skipped"],
+                "error_count": self.counters["errors"],
+                "request_count": self.client.request_count,
+                "throttled_seconds": round(self.client.throttled_seconds, 1),
+                "phase_state": json.dumps(self.phase_state, ensure_ascii=False),
+                "summary": json.dumps(
+                    self.summary, ensure_ascii=False, indent=1, default=str
+                ),
+            },
+            update_modified=False,
+        )
+
+    # -----------------------------------------------------------------
+    # Cursores de fase
+    # -----------------------------------------------------------------
+
+    def cursor(self, key: str = "last_id") -> int:
+        return int((self.phase_state.get(self.phase) or {}).get(key) or 0)
+
+    def set_cursor(self, value, key: str = "last_id") -> None:
+        self.phase_state.setdefault(self.phase, {})[key] = value
+
+    def is_phase_done(self, phase: str) -> bool:
+        return bool((self.phase_state.get(phase) or {}).get("done"))
+
+    def mark_phase_done(self) -> None:
+        self.phase_state.setdefault(self.phase, {})["done"] = True
+        self.phase_state[self.phase]["finished_on"] = str(now_datetime())
+
+    # -----------------------------------------------------------------
+    # Log
+    # -----------------------------------------------------------------
+
+    def log(
+        self,
+        level: str,
+        message: str,
+        bitrix_id=None,
+        target_doctype: str | None = None,
+        target_name: str | None = None,
+    ) -> None:
+        """
+        Anota una incidencia en Bitrix24 Migration Log.
+
+        Los mensajes Info se descartan salvo que sean hitos de fase
+        (los emite el propio runner): una corrida grande generaría
+        cientos de miles de filas inútiles.
+        """
+        if level == "error":
+            self.counters["errors"] = self.counters.get("errors", 0) + 1
+
+        try:
+            frappe.get_doc(
+                {
+                    "doctype": "Bitrix24 Migration Log",
+                    "run": self.run_name,
+                    "level": level.capitalize(),
+                    "phase": self.phase,
+                    "bitrix_id": str(bitrix_id) if bitrix_id is not None else None,
+                    "target_doctype": target_doctype,
+                    "target_name": target_name,
+                    "message": message,
+                }
+            ).insert(ignore_permissions=True)
+        except Exception:
+            # Que falle el log nunca debe tumbar la migración.
+            frappe.log_error(
+                title="CORTEC Bitrix24: no se pudo escribir el log de migración",
+                message=f"{self.phase}: {message}",
+            )
+
+    def _client_logger(self, level: str, message: str) -> None:
+        """Puente entre los avisos del cliente REST y el log de la corrida."""
+        self.log(level, message)
+
+    def note(self, key: str, value) -> None:
+        """Anota un dato en el informe de la corrida (`summary`)."""
+        self.summary.setdefault(self.phase, {})[key] = value
+
+    def add_to_note_list(self, key: str, value) -> None:
+        bucket = self.summary.setdefault(self.phase, {}).setdefault(key, [])
+        if value not in bucket:
+            bucket.append(value)
+
+
+# ---------------------------------------------------------------------------
+# Fases
+# ---------------------------------------------------------------------------
+
+
+def get_phases() -> list[tuple[str, str, str, str]]:
+    """
+    (clave, campo del Settings que la habilita, etiqueta, módulo).
+
+    El módulo se importa tarde, dentro de run_migration(), para que un
+    error de sintaxis en una fase no impida ni abrir el doctype de
+    Settings.
+    """
+    return [
+        ("dicts", "migrate_dicts", "Diccionarios", "dicts"),
+        ("users", "migrate_users", "Usuarios", "users"),
+        ("userfields", "migrate_userfields", "Campos personalizados", "userfields"),
+        ("companies", "migrate_companies", "Empresas", "companies"),
+        ("contacts", "migrate_contacts", "Contactos", "contacts"),
+        ("leads", "migrate_leads", "Leads", "leads"),
+        ("deals", "migrate_deals", "Negociaciones", "deals"),
+        ("activities", "migrate_activities", "Actividades y timeline", "activities"),
+        ("openlines", "migrate_openlines", "WhatsApp (Open Channels)", "openlines"),
+        ("files", "migrate_files", "Adjuntos", "files"),
+        ("webforms", "migrate_webforms", "Formularios web", "webforms"),
+    ]
+
+
+def run_migration(run_name: str) -> None:
+    """
+    Punto de entrada del job en cola. Ejecuta las fases habilitadas y
+    deja el Bitrix24 Migration Run cerrado pase lo que pase.
+    """
+    import importlib
+
+    started = time.monotonic()
+    ctx = MigrationContext(run_name)
+
+    frappe.db.set_value(
+        "Bitrix24 Migration Run",
+        run_name,
+        {"status": "Running", "started_on": now_datetime()},
+        update_modified=False,
+    )
+    frappe.db.commit()
+
+    status = "Completed"
+
+    try:
+        with silence_cortec_alerts(ctx), migration_flags():
+            for key, flag, label, module_name in get_phases():
+                if not ctx.settings.get(flag):
+                    continue
+
+                if ctx.is_phase_done(key):
+                    ctx.log("info", f"Fase '{label}' ya completada; se omite.")
+                    continue
+
+                ctx.phase = key
+                ctx.log("info", f"Inicio de la fase '{label}'.")
+                ctx.checkpoint()
+
+                module = importlib.import_module(
+                    f"cortec_bitrix24.migration.{module_name}"
+                )
+                module.run(ctx)
+
+                ctx.mark_phase_done()
+                ctx.checkpoint()
+                ctx.log("info", f"Fin de la fase '{label}'.")
+
+    except B24FatalError as e:
+        status = "Failed"
+        ctx.log("error", f"Corrida abortada: {e}")
+        frappe.log_error(
+            title="CORTEC Bitrix24: migración abortada", message=str(e)
+        )
+    except Exception as e:
+        status = "Failed"
+        ctx.log("error", f"Corrida abortada por un error inesperado: {e}")
+        frappe.log_error(
+            title="CORTEC Bitrix24: migración abortada",
+            message=frappe.get_traceback(),
+        )
+    finally:
+        ctx.phase = ""
+        ctx.summary["duracion_segundos"] = round(time.monotonic() - started, 1)
+        ctx._flush_run()
+        frappe.db.set_value(
+            "Bitrix24 Migration Run",
+            run_name,
+            {"status": status, "finished_on": now_datetime(), "current_phase": ""},
+            update_modified=False,
+        )
+        frappe.db.set_value(
+            "Bitrix24 Migration Settings",
+            "Bitrix24 Migration Settings",
+            {"last_run": run_name},
+            update_modified=False,
+        )
+        if status == "Completed" and not ctx.dry_run:
+            # Punto de partida de la siguiente pasada delta.
+            frappe.db.set_value(
+                "Bitrix24 Migration Settings",
+                "Bitrix24 Migration Settings",
+                {"last_completed_run_end": now_datetime()},
+                update_modified=False,
+            )
+        frappe.db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Convivencia con el resto del sitio
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def migration_flags():
+    """
+    Marca el hilo como "estoy migrando".
+
+    `in_bitrix24_migration` es la bandera que cortec_helpdesk puede
+    consultar para no notificar sobre documentos históricos. Mientras
+    ese guard no exista allí, el silenciado real lo hace
+    silence_cortec_alerts(); la bandera queda como el mecanismo limpio
+    para cuando se añada.
+
+    `in_import` frena además las notificaciones y asignaciones
+    automáticas que el propio Frappe dispara al insertar.
+    """
+    previous_migration = frappe.flags.get("in_bitrix24_migration")
+    previous_import = frappe.flags.get("in_import")
+
+    frappe.flags.in_bitrix24_migration = True
+    frappe.flags.in_import = True
+
+    try:
+        yield
+    finally:
+        frappe.flags.in_bitrix24_migration = previous_migration
+        frappe.flags.in_import = previous_import
+
+
+# Campos de CORTEC Helpdesk Settings que se apagan durante la corrida.
+CORTEC_ALERT_FIELDS = ("telegram_enabled", "browser_alerts_enabled")
+
+
+@contextmanager
+def silence_cortec_alerts(ctx):
+    """
+    Apaga temporalmente los avisos de cortec_helpdesk.
+
+    Sin esto, migrar el histórico dispara `telegram.on_communication` y
+    `whatsapp.route_unclaimed_message` por cada Communication y cada
+    WhatsApp Message insertados: miles de mensajes de Telegram a los
+    agentes por conversaciones de hace años, y un CRM Lead espurio por
+    cada mensaje de WhatsApp sin vínculo abierto.
+
+    Los valores se restauran en el `finally`, también si la corrida
+    aborta. Si el proceso muere de golpe (kill -9 del worker) quedarían
+    apagados: el informe de la corrida lo deja anotado para que se
+    revise.
+    """
+    if ctx.dry_run or not ctx.settings.silence_cortec_alerts:
+        yield
+        return
+
+    if not frappe.db.exists("DocType", "CORTEC Helpdesk Settings"):
+        yield
+        return
+
+    previous = {
+        field: frappe.db.get_single_value("CORTEC Helpdesk Settings", field)
+        for field in CORTEC_ALERT_FIELDS
+    }
+
+    for field in CORTEC_ALERT_FIELDS:
+        frappe.db.set_single_value("CORTEC Helpdesk Settings", field, 0)
+    frappe.db.commit()
+
+    ctx.log(
+        "info",
+        "Avisos de CORTEC Helpdesk desactivados durante la corrida "
+        f"(valores previos: {previous}). Se restauran al terminar.",
+    )
+
+    try:
+        yield
+    finally:
+        for field, value in previous.items():
+            frappe.db.set_single_value("CORTEC Helpdesk Settings", field, value)
+        frappe.db.commit()
+        frappe.clear_cache(doctype="CORTEC Helpdesk Settings")
+        ctx.log("info", f"Avisos de CORTEC Helpdesk restaurados: {previous}.")

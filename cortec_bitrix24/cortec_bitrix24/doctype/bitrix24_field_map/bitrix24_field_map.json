@@ -1,0 +1,118 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-09-23 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "bitrix_entity",
+  "uf_code",
+  "uf_label",
+  "uf_type",
+  "fieldmap_cb",
+  "target_doctype",
+  "target_fieldname",
+  "create_custom_field",
+  "ignore",
+  "fieldmap_options_section",
+  "options_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "bitrix_entity",
+   "fieldtype": "Select",
+   "label": "Entidad en Bitrix24",
+   "options": "Lead\nDeal\nContact\nCompany",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "uf_code",
+   "fieldtype": "Data",
+   "label": "Código (UF_CRM_…)",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "uf_label",
+   "fieldtype": "Data",
+   "label": "Etiqueta",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "uf_type",
+   "fieldtype": "Data",
+   "label": "Tipo en Bitrix24",
+   "description": "string, double, date, datetime, boolean, enumeration, file, crm, employee, url…"
+  },
+  {
+   "fieldname": "fieldmap_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "target_doctype",
+   "fieldtype": "Link",
+   "label": "Doctype destino",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "target_fieldname",
+   "fieldtype": "Data",
+   "label": "Campo destino",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "create_custom_field",
+   "fieldtype": "Check",
+   "label": "Crear el Custom Field si no existe",
+   "default": "0",
+   "description": "Crea el campo en el doctype destino con módulo 'Cortec Bitrix24', para que viaje como fixture."
+  },
+  {
+   "fieldname": "ignore",
+   "fieldtype": "Check",
+   "label": "Omitir este campo",
+   "default": "0"
+  },
+  {
+   "fieldname": "fieldmap_options_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "options_json",
+   "fieldtype": "Code",
+   "label": "Valores de la enumeración",
+   "options": "JSON",
+   "read_only": 1,
+   "description": "ID de Bitrix → etiqueta, para los campos de tipo 'enumeration'."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-23 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Cortec Bitrix24",
+ "name": "Bitrix24 Field Map",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "create": 1,
+   "write": 1,
+   "delete": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0,
+ "autoname": "format:{bitrix_entity}::{uf_code}",
+ "naming_rule": "Expression",
+ "title_field": "uf_label",
+ "description": "Campo personalizado de Bitrix24 (UF_CRM_*) → campo de Frappe."
+}

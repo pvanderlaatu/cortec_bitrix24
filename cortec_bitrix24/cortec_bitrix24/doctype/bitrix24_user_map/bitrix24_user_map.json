@@ -1,0 +1,81 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-09-23 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "bitrix_user_id",
+  "bitrix_name",
+  "bitrix_email",
+  "usermap_cb",
+  "user",
+  "is_active"
+ ],
+ "fields": [
+  {
+   "fieldname": "bitrix_user_id",
+   "fieldtype": "Data",
+   "label": "ID de usuario en Bitrix24",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "bitrix_name",
+   "fieldtype": "Data",
+   "label": "Nombre en Bitrix24",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "bitrix_email",
+   "fieldtype": "Data",
+   "label": "Correo en Bitrix24",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "usermap_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "Usuario de Frappe",
+   "options": "User",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Activo en Bitrix24",
+   "default": "1"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-23 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Cortec Bitrix24",
+ "name": "Bitrix24 User Map",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "create": 1,
+   "write": 1,
+   "delete": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0,
+ "autoname": "format:{bitrix_user_id}",
+ "naming_rule": "Expression",
+ "title_field": "bitrix_name",
+ "description": "Responsable en Bitrix24 → User de Frappe. Las filas sin 'user' hacen que sus Leads y Deals caigan al usuario de respaldo: conviene resolverlas antes de la corrida real."
+}

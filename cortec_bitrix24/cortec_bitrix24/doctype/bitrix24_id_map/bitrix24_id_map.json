@@ -1,0 +1,103 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-09-23 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "entity_type",
+  "bitrix_id",
+  "idmap_cb",
+  "target_doctype",
+  "target_name",
+  "idmap_meta_section",
+  "payload_hash",
+  "last_synced",
+  "run"
+ ],
+ "fields": [
+  {
+   "fieldname": "entity_type",
+   "fieldtype": "Data",
+   "label": "Tipo de entidad",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "lead, deal, contact, company, activity, comment, chat_message, file, webform…"
+  },
+  {
+   "fieldname": "bitrix_id",
+   "fieldtype": "Data",
+   "label": "ID en Bitrix24",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "idmap_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "target_doctype",
+   "fieldtype": "Link",
+   "label": "Doctype destino",
+   "options": "DocType",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "target_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Documento destino",
+   "options": "target_doctype",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "idmap_meta_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "payload_hash",
+   "fieldtype": "Data",
+   "label": "Hash del payload",
+   "description": "SHA-1 de los campos migrados. Si no cambió, la pasada siguiente omite el registro sin tocar la base de datos."
+  },
+  {
+   "fieldname": "last_synced",
+   "fieldtype": "Datetime",
+   "label": "Última sincronización"
+  },
+  {
+   "fieldname": "run",
+   "fieldtype": "Link",
+   "label": "Corrida",
+   "options": "Bitrix24 Migration Run"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-23 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Cortec Bitrix24",
+ "name": "Bitrix24 ID Map",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "create": 1,
+   "write": 1,
+   "delete": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0,
+ "autoname": "format:{entity_type}::{bitrix_id}",
+ "naming_rule": "Expression",
+ "search_fields": "bitrix_id,target_name",
+ "description": "Correspondencia ID de Bitrix24 → documento de Frappe. El nombre del registro es la clave única (entity_type::bitrix_id), y es lo que hace que repetir la migración actualice en vez de duplicar."
+}

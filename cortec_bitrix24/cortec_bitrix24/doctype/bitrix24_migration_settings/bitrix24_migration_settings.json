@@ -1,0 +1,264 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-09-23 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "conexion_section",
+  "portal_url",
+  "webhook_url",
+  "conexion_cb",
+  "request_timeout",
+  "throttle_seconds",
+  "max_retries",
+  "batch_size",
+  "corrida_section",
+  "dry_run",
+  "silence_cortec_alerts",
+  "preserve_timestamps",
+  "corrida_cb",
+  "default_owner",
+  "country_code",
+  "max_attachment_mb",
+  "fases_section",
+  "migrate_dicts",
+  "migrate_users",
+  "migrate_userfields",
+  "migrate_companies",
+  "migrate_contacts",
+  "fases_cb",
+  "migrate_leads",
+  "migrate_deals",
+  "migrate_activities",
+  "migrate_openlines",
+  "migrate_files",
+  "migrate_webforms",
+  "estado_section",
+  "last_run",
+  "last_completed_run_end"
+ ],
+ "fields": [
+  {
+   "fieldname": "conexion_section",
+   "fieldtype": "Section Break",
+   "label": "Conexión con Bitrix24"
+  },
+  {
+   "fieldname": "portal_url",
+   "fieldtype": "Data",
+   "label": "URL del portal",
+   "reqd": 1,
+   "description": "Dominio del portal, p. ej. https://cortec.bitrix24.es — se usa solo para armar enlaces de vuelta en los logs."
+  },
+  {
+   "fieldname": "webhook_url",
+   "fieldtype": "Password",
+   "label": "URL del webhook entrante",
+   "reqd": 1,
+   "description": "Bitrix24 → Recursos para desarrolladores → Otros → Webhook entrante. Debe tener permiso sobre CRM, Usuarios, Disco y Open Channels. Formato: https://portal.bitrix24.es/rest/1/token/"
+  },
+  {
+   "fieldname": "conexion_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "request_timeout",
+   "fieldtype": "Int",
+   "label": "Tiempo de espera (s)",
+   "default": "60"
+  },
+  {
+   "fieldname": "throttle_seconds",
+   "fieldtype": "Float",
+   "label": "Pausa entre peticiones (s)",
+   "default": "0.5",
+   "precision": "2",
+   "description": "El portal admite ~2 peticiones por segundo. Bajar de 0.5 provoca QUERY_LIMIT_EXCEEDED y reintentos, que salen más caros que la pausa."
+  },
+  {
+   "fieldname": "max_retries",
+   "fieldtype": "Int",
+   "label": "Reintentos por petición",
+   "default": "5"
+  },
+  {
+   "fieldname": "batch_size",
+   "fieldtype": "Int",
+   "label": "Sub-llamadas por batch",
+   "default": "50",
+   "description": "Máximo 50, el tope del método batch de Bitrix24."
+  },
+  {
+   "fieldname": "corrida_section",
+   "fieldtype": "Section Break",
+   "label": "Opciones de la corrida"
+  },
+  {
+   "fieldname": "dry_run",
+   "fieldtype": "Check",
+   "label": "Corrida en seco (no escribe nada)",
+   "default": "1",
+   "description": "Recorre el portal y produce el informe de la corrida sin crear ni modificar ningún documento. Desmarcar solo después de revisar un dry-run completo."
+  },
+  {
+   "fieldname": "silence_cortec_alerts",
+   "fieldtype": "Check",
+   "label": "Silenciar avisos de CORTEC Helpdesk durante la corrida",
+   "default": "1",
+   "description": "Desactiva temporalmente los avisos por Telegram y las alertas de navegador de cortec_helpdesk mientras dura la migración, y restaura los valores al terminar. Sin esto, migrar el histórico manda un Telegram por cada mensaje."
+  },
+  {
+   "fieldname": "preserve_timestamps",
+   "fieldtype": "Check",
+   "label": "Conservar fechas originales de Bitrix24",
+   "default": "1",
+   "description": "Reescribe creation/modified con las fechas del portal, para que el historial quede en orden cronológico real."
+  },
+  {
+   "fieldname": "corrida_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_owner",
+   "fieldtype": "Link",
+   "label": "Usuario de respaldo",
+   "options": "User",
+   "reqd": 1,
+   "description": "Recibe los Leads y Deals cuyo responsable en Bitrix24 no tenga un User equivalente en Frappe."
+  },
+  {
+   "fieldname": "country_code",
+   "fieldtype": "Data",
+   "label": "Código de país por defecto",
+   "default": "506",
+   "description": "Para normalizar a E.164 los teléfonos que Bitrix24 guardó sin código de país."
+  },
+  {
+   "fieldname": "max_attachment_mb",
+   "fieldtype": "Int",
+   "label": "Tamaño máximo de adjunto (MB)",
+   "default": "25",
+   "description": "Los adjuntos más grandes se omiten y se anotan en el log."
+  },
+  {
+   "fieldname": "fases_section",
+   "fieldtype": "Section Break",
+   "label": "Fases a ejecutar"
+  },
+  {
+   "fieldname": "migrate_dicts",
+   "fieldtype": "Check",
+   "label": "1. Diccionarios (estados, fuentes, embudos)",
+   "default": "1"
+  },
+  {
+   "fieldname": "migrate_users",
+   "fieldtype": "Check",
+   "label": "2. Usuarios",
+   "default": "1"
+  },
+  {
+   "fieldname": "migrate_userfields",
+   "fieldtype": "Check",
+   "label": "3. Campos personalizados (UF_CRM_*)",
+   "default": "1"
+  },
+  {
+   "fieldname": "migrate_companies",
+   "fieldtype": "Check",
+   "label": "4. Empresas → CRM Organization",
+   "default": "1"
+  },
+  {
+   "fieldname": "migrate_contacts",
+   "fieldtype": "Check",
+   "label": "5. Contactos → Contact",
+   "default": "1"
+  },
+  {
+   "fieldname": "fases_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "migrate_leads",
+   "fieldtype": "Check",
+   "label": "6. Leads → CRM Lead",
+   "default": "1"
+  },
+  {
+   "fieldname": "migrate_deals",
+   "fieldtype": "Check",
+   "label": "7. Negociaciones → CRM Deal",
+   "default": "1"
+  },
+  {
+   "fieldname": "migrate_activities",
+   "fieldtype": "Check",
+   "label": "8. Actividades y timeline",
+   "default": "1"
+  },
+  {
+   "fieldname": "migrate_openlines",
+   "fieldtype": "Check",
+   "label": "9. WhatsApp (Open Channels)",
+   "default": "1"
+  },
+  {
+   "fieldname": "migrate_files",
+   "fieldtype": "Check",
+   "label": "10. Adjuntos",
+   "default": "1"
+  },
+  {
+   "fieldname": "migrate_webforms",
+   "fieldtype": "Check",
+   "label": "11. Formularios web",
+   "default": "1"
+  },
+  {
+   "fieldname": "estado_section",
+   "fieldtype": "Section Break",
+   "label": "Estado"
+  },
+  {
+   "fieldname": "last_run",
+   "fieldtype": "Link",
+   "label": "Última corrida",
+   "options": "Bitrix24 Migration Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_completed_run_end",
+   "fieldtype": "Datetime",
+   "label": "Fin de la última corrida completa",
+   "read_only": 1,
+   "description": "Punto de partida de la siguiente pasada delta (filtro >DATE_MODIFY)."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-23 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Cortec Bitrix24",
+ "name": "Bitrix24 Migration Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "create": 1,
+   "write": 1,
+   "delete": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0,
+ "issingle": 1
+}
