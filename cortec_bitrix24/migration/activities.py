@@ -49,6 +49,7 @@ from cortec_bitrix24.utils import (
     bbcode_to_text,
     html_to_text,
     normalize_phone,
+    parse_date_str,
     parse_datetime_str,
     to_bitrix_datetime,
     truncate,
@@ -77,6 +78,10 @@ TYPE_MEETING, TYPE_CALL, TYPE_TASK, TYPE_EMAIL = 1, 2, 3, 4
 
 # DIRECTION de Bitrix24.
 DIRECTION_INCOMING = 1
+
+# PRIORITY de crm.activity → priority de CRM Task. Cuidado: el módulo
+# Tareas y proyectos usa otra escala (0/1/2); ver migration/tasks.py.
+ACTIVITY_PRIORITY_MAP = {1: "Low", 2: "Medium", 3: "High"}
 
 SELECT_FIELDS = [
     "ID", "OWNER_ID", "OWNER_TYPE_ID", "TYPE_ID", "PROVIDER_ID",
@@ -308,6 +313,10 @@ def _sync_task(ctx, row: dict, ref_doctype: str, ref_name: str) -> None:
         "title": truncate(row.get("SUBJECT") or f"Tarea B24 {bitrix_id}", 140),
         "description": _description_html(row),
         "status": "Done" if completada else "Todo",
+        # PRIORITY en crm.activity es 1/2/3, no 0/1/2 como en el módulo
+        # de tareas: son escalas distintas dentro del mismo portal.
+        "priority": ACTIVITY_PRIORITY_MAP.get(as_int(row.get("PRIORITY")), "Medium"),
+        "start_date": parse_date_str(row.get("START_TIME")),
         "due_date": parse_datetime_str(row.get("DEADLINE") or row.get("END_TIME")),
         "assigned_to": resolve_user(ctx, row.get("RESPONSIBLE_ID"), fallback=None),
         "reference_doctype": ref_doctype,

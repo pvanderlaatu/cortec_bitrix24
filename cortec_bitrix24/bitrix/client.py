@@ -187,6 +187,8 @@ class B24Client:
         params: dict | None = None,
         start_after_id: int = 0,
         id_field: str = "ID",
+        row_id_field: str | None = None,
+        disable_total: bool = True,
     ) -> Iterator[dict]:
         """
         Itera TODOS los registros de una colección con paginación por ID.
@@ -196,19 +198,31 @@ class B24Client:
 
         Requiere que el método admita `order` y un filtro `>ID` — lo
         cumplen crm.lead.list, crm.deal.list, crm.contact.list,
-        crm.company.list y crm.activity.list. Para los métodos que no
-        (p. ej. crm.status.list, que devuelve pocas filas de una vez),
-        usar call() directamente.
+        crm.company.list, crm.activity.list y tasks.task.list. Para los
+        métodos que no (p. ej. crm.status.list, que devuelve pocas filas
+        de una vez), usar call() directamente.
+
+        `id_field` es el nombre del campo al FILTRAR y ORDENAR;
+        `row_id_field` el que trae la respuesta. Normalmente coinciden,
+        pero tasks.task.list filtra por `ID` en mayúsculas y devuelve
+        `id` en camelCase, y confundirlos deja el cursor clavado.
+
+        `disable_total=False` conserva el conteo de total (`start: 0`).
+        Hace falta en los métodos que no entienden el `start: -1` de la
+        familia crm.*; se sigue paginando por ID, solo que pagando el
+        conteo en cada página.
         """
         params = dict(params or {})
         base_filter = dict(params.pop("filter", {}) or {})
         last_id = int(start_after_id or 0)
+        row_id_field = row_id_field or id_field
 
         while True:
             page_params = dict(params)
             page_params["order"] = {id_field: "ASC"}
             page_params["filter"] = {**base_filter, f">{id_field}": last_id}
-            page_params["start"] = -1  # desactiva el conteo de total
+            # start: -1 desactiva el conteo de total, que es lo caro.
+            page_params["start"] = -1 if disable_total else 0
 
             rows = self.call(method, page_params) or []
 
@@ -223,13 +237,13 @@ class B24Client:
             for row in rows:
                 yield row
 
-            last_seen = rows[-1].get(id_field)
+            last_seen = rows[-1].get(row_id_field)
             if last_seen is None:
                 # Sin ID no podemos avanzar el cursor: parar es mejor
                 # que entrar en un bucle infinito sobre la misma página.
                 self._log(
                     "error",
-                    f"{method}: la respuesta no trae '{id_field}'; "
+                    f"{method}: la respuesta no trae '{row_id_field}'; "
                     "se interrumpe la paginación.",
                 )
                 return

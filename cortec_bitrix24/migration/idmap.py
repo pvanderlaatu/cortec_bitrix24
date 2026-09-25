@@ -52,6 +52,11 @@ ENTITY_CONTACT = "contact"
 ENTITY_LEAD = "lead"
 ENTITY_DEAL = "deal"
 ENTITY_ACTIVITY = "activity"
+# Tareas del módulo Tareas y proyectos (tasks.task.*). Tipo propio y no
+# `activity`: los IDs de una y otra colección se solapan, y compartir
+# prefijo haría que una tarea pisara la actividad del mismo número.
+ENTITY_TASK = "task"
+ENTITY_TASK_COMMENT = "task_comment"
 ENTITY_COMMENT = "comment"
 ENTITY_CHAT_MESSAGE = "chat_message"
 ENTITY_FILE = "file"

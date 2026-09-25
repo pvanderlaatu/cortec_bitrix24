@@ -126,6 +126,61 @@ class TestListAll(unittest.TestCase):
         self.assertTrue(any("paginación" in a for a in avisos))
 
 
+class TestListAllCamelCase(unittest.TestCase):
+    """
+    tasks.task.list filtra por `ID` en mayúsculas y devuelve `id` en
+    camelCase. Si el cliente lee el cursor con el nombre del filtro, no
+    lo encuentra, y la paginación se detiene tras la primera página o
+    entra en bucle.
+    """
+
+    def setUp(self):
+        self.client = _client()
+        self.llamadas = []
+
+    def _servir(self, registros):
+        def fake_call(method, params=None):
+            params = params or {}
+            self.llamadas.append(params)
+            desde = int(params["filter"][">ID"])
+            return [r for r in registros if int(r["id"]) > desde][:PAGE_SIZE]
+
+        self.client.call = fake_call
+
+    def test_pagina_con_nombres_distintos_para_filtro_y_respuesta(self):
+        self._servir([{"id": str(i), "title": f"t{i}"} for i in range(1, 121)])
+
+        obtenidos = [
+            r["id"]
+            for r in self.client.list_all(
+                "tasks.task.list",
+                id_field="ID",
+                row_id_field="id",
+                disable_total=False,
+            )
+        ]
+
+        self.assertEqual(len(obtenidos), 120)
+        self.assertEqual(len(set(obtenidos)), 120)
+        self.assertEqual([int(p["filter"][">ID"]) for p in self.llamadas],
+                         [0, 50, 100])
+
+    def test_disable_total_false_usa_start_cero(self):
+        # tasks.task.list no entiende el start=-1 de la familia crm.*.
+        self._servir([{"id": "1"}])
+        list(
+            self.client.list_all(
+                "tasks.task.list", row_id_field="id", disable_total=False
+            )
+        )
+        self.assertEqual(self.llamadas[0]["start"], 0)
+
+    def test_por_defecto_sigue_desactivando_el_total(self):
+        self._servir([{"id": "1"}])
+        list(self.client.list_all("tasks.task.list", row_id_field="id"))
+        self.assertEqual(self.llamadas[0]["start"], -1)
+
+
 class TestBatchEncoding(unittest.TestCase):
     def test_aplana_filtros_anidados(self):
         pares: list[str] = []

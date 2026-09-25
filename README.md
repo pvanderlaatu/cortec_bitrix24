@@ -22,13 +22,14 @@ pasada delta el día del corte.
 | 5 | Contactos | Contact (+ Contact Email / Contact Phone) |
 | 6 | Leads | CRM Lead |
 | 7 | Negociaciones | CRM Deal (+ tabla de contactos) |
-| 8 | Correos, llamadas, tareas y comentarios del timeline | Communication, CRM Call Log, CRM Task, FCRM Note |
-| 9 | WhatsApp de Open Channels | WhatsApp Message |
-| 10 | Adjuntos | File (se bajan junto con su correo o mensaje) |
-| 11 | Formularios web | Bitrix24 Web Form (mapeo de campos, para el corte) |
+| 8 | Correos, llamadas, to-dos y comentarios del timeline del CRM | Communication, CRM Call Log, CRM Task, FCRM Note |
+| 9 | Módulo Tareas y proyectos (`tasks.task.*`) | CRM Task |
+| 10 | WhatsApp de Open Channels | WhatsApp Message |
+| 11 | Adjuntos | File (se bajan junto con su correo, mensaje o tarea) |
+| 12 | Formularios web | Bitrix24 Web Form (mapeo de campos, para el corte) |
 
 **No** migra: tickets de soporte a Helpdesk (Bitrix24 se usa aquí como CRM),
-presupuestos, facturas, ni tareas del módulo de Tareas y proyectos.
+presupuestos ni facturas.
 
 ## Estructura
 
@@ -49,12 +50,14 @@ cortec_bitrix24/
     ├── migration/
     │   ├── runner.py           # fases, checkpoints, silenciado de avisos
     │   ├── idmap.py            # upsert() — el núcleo de la idempotencia
-    │   ├── dicts.py            # fase 1        ├── deals.py       # fase 7
-    │   ├── users.py            # fase 2        ├── activities.py  # fase 8
-    │   ├── userfields.py       # fase 3        ├── openlines.py   # fase 9
-    │   ├── companies.py        # fase 4        ├── files.py       # fase 10
-    │   ├── contacts.py         # fase 5        └── webforms.py    # fase 11
-    │   └── leads.py            # fase 6
+    │   ├── dicts.py            # fase 1        ├── tasks.py       # fase 9
+    │   ├── users.py            # fase 2        ├── openlines.py   # fase 10
+    │   ├── userfields.py       # fase 3        ├── files.py       # fase 11
+    │   ├── companies.py        # fase 4        └── webforms.py    # fase 12
+    │   ├── contacts.py         # fase 5
+    │   ├── leads.py            # fase 6
+    │   ├── deals.py            # fase 7
+    │   └── activities.py       # fase 8
     └── tests/
 ```
 
@@ -151,7 +154,7 @@ frappe.call("cortec_bitrix24.api.verify_counts")
 
 ## Decisiones que conviene conocer
 
-### El envío de WhatsApp se desactiva durante la fase 9
+### El envío de WhatsApp se desactiva durante la fase 10
 
 `WhatsAppMessage.before_insert` de `frappe_whatsapp` llama a
 `send_outgoing()`, que **manda el mensaje a Meta** cuando el tipo es
@@ -192,6 +195,49 @@ El responsable de cada contacto en Bitrix24 se escribe en
 `Contact.custom_account_manager` si `cortec_helpdesk` está instalado.
 Es lo que hace que su asignación automática de tickets funcione desde el
 primer correo que entre tras el corte.
+
+### Las dos cosas que Bitrix24 llama «tarea»
+
+Son colecciones distintas y se migran en fases distintas, ambas a
+`CRM Task`:
+
+- **To-dos del timeline del CRM** (`crm.activity.list` con `PROVIDER_ID`
+  `CRM_TODO`, `TASK` o `CRM_REMINDER`) — fase 8. Siempre cuelgan de un
+  Lead, Deal, Contacto o Empresa.
+- **Módulo Tareas y proyectos** (`tasks.task.list`) — fase 9. Se migran
+  **todas** las tareas del portal, también las internas sin relación con
+  el CRM, que quedan sin referencia (en `CRM Task` solo `title` es
+  obligatorio).
+
+Cuidado con las **prioridades**: son dos escalas distintas en el mismo
+portal. Las actividades del CRM usan 1/2/3 y las tareas 0/1/2. Aplicar
+una a la otra desplaza todas las prioridades un escalón; hay un test que
+lo vigila.
+
+El estado 4 de Bitrix24 («supuestamente completada»: el ejecutor la
+cerró y falta que el creador la acepte) se migra como `Done`. En un
+portal que se va a retirar nadie va a aceptar ya nada, y dejarla
+`In Progress` mostraría como pendiente lo que está hecho.
+
+### Lo que no cabe en CRM Task
+
+`CRM Task` tiene ocho campos y una tarea de Bitrix24 tiene muchos más.
+Sin inventar Custom Fields, lo que no tiene hueco propio se escribe como
+una cabecera dentro de `description`, que es un Text Editor: proyecto,
+creador, co-ejecutores, observadores, tiempo estimado e invertido, el
+checklist como lista de casillas y los comentarios.
+
+No se migran dependencias entre tareas, sprints, plantillas ni historial
+de cambios. Una tarea archivada no necesita sus dependencias: ya no se
+va a replanificar nada.
+
+**Los comentarios pueden no llegar.** `task.commentitem.getlist` está
+descontinuado desde `tasks 25.700.0` y no funciona con la ficha nueva de
+tarea. La fase lo intenta igual y, si el portal ya no lo expone, lo
+anota en el informe de la corrida — precisamente para que unas tareas
+sin comentarios no se confundan con tareas que nunca los tuvieron.
+Recuperarlos exigiría leer el chat de cada tarea con
+`im.dialog.messages.get`, que es otra fase entera.
 
 ### El importe de los leads
 
@@ -280,3 +326,5 @@ la que depende que el mismo cliente no acabe siendo tres contactos.
 - No declara `erpnext` como dependencia (GPL-3.0) para no mezclarlo con
   AGPL-3.0, igual que `cortec_helpdesk`.
 - Compatible con Frappe v15/v16 y Frappe CRM v2.x.
+- No requiere ERPNext: las tareas van a `CRM Task` de Frappe CRM, y no a
+  los doctypes `Task`/`Project` de ERPNext (GPL-3.0).

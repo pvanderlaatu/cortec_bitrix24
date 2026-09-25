@@ -32,6 +32,7 @@
   "migrate_leads",
   "migrate_deals",
   "migrate_activities",
+  "migrate_tasks",
   "migrate_openlines",
   "migrate_files",
   "migrate_webforms",
@@ -200,21 +201,28 @@
    "default": "1"
   },
   {
+   "fieldname": "migrate_tasks",
+   "fieldtype": "Check",
+   "label": "9. Tareas y proyectos → CRM Task",
+   "default": "1",
+   "description": "El módulo Tareas y proyectos de Bitrix24 (tasks.task.*), no los to-do del timeline del CRM: esos ya los trae la fase 8. Migra TODAS las tareas del portal, incluidas las internas sin relación con el CRM."
+  },
+  {
    "fieldname": "migrate_openlines",
    "fieldtype": "Check",
-   "label": "9. WhatsApp (Open Channels)",
+   "label": "10. WhatsApp (Open Channels)",
    "default": "1"
   },
   {
    "fieldname": "migrate_files",
    "fieldtype": "Check",
-   "label": "10. Adjuntos",
+   "label": "11. Adjuntos",
    "default": "1"
   },
   {
    "fieldname": "migrate_webforms",
    "fieldtype": "Check",
-   "label": "11. Formularios web",
+   "label": "12. Formularios web",
    "default": "1"
   },
   {

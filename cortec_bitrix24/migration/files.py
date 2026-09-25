@@ -165,16 +165,25 @@ def _download_url(ctx, file_id) -> str | None:
     Solo hace falta cuando el campo FILES no trajo la URL. La que
     devuelve el portal ya lleva la autorización del webhook.
     """
-    try:
-        result = ctx.client.call("disk.attachedObject.get", {"id": file_id})
-    except Exception as e:
-        ctx.log("warning", f"disk.attachedObject.get falló para {file_id}: {e}")
-        return None
+    # Las actividades del CRM traen ids de "objeto adjunto"; las tareas
+    # (ufTaskWebdavFiles) traen ids de fichero del Disco. Son espacios de
+    # ids distintos y no hay forma fiable de saber cuál es cuál a priori,
+    # así que se prueban los dos antes de darse por vencido.
+    for method in ("disk.attachedObject.get", "disk.file.get"):
+        try:
+            result = ctx.client.call(method, {"id": file_id})
+        except Exception:
+            continue
 
-    if not isinstance(result, dict):
-        return None
+        if not isinstance(result, dict):
+            continue
 
-    return result.get("DOWNLOAD_URL") or result.get("downloadUrl")
+        url = result.get("DOWNLOAD_URL") or result.get("downloadUrl")
+        if url:
+            return url
+
+    ctx.log("warning", f"No se pudo obtener la URL de descarga de {file_id}.")
+    return None
 
 
 def _download(ctx, url: str, limite: int, file_id) -> bytes | None:

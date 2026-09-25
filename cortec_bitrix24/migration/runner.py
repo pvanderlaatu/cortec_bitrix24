@@ -27,7 +27,8 @@ El orden de las fases no es negociable — cada una necesita las
 correspondencias que dejó la anterior:
 
     diccionarios → usuarios → campos UF → empresas → contactos →
-    leads → negociaciones → actividades → WhatsApp → adjuntos → formularios
+    leads → negociaciones → actividades → tareas → WhatsApp →
+    adjuntos → formularios
 
 Cada fase guarda su cursor en el Bitrix24 Migration Run, así que una
 corrida interrumpida (worker reiniciado, portal caído) se reanuda donde
@@ -220,6 +221,7 @@ def get_phases() -> list[tuple[str, str, str, str]]:
         ("leads", "migrate_leads", "Leads", "leads"),
         ("deals", "migrate_deals", "Negociaciones", "deals"),
         ("activities", "migrate_activities", "Actividades y timeline", "activities"),
+        ("tasks", "migrate_tasks", "Tareas y proyectos", "tasks"),
         ("openlines", "migrate_openlines", "WhatsApp (Open Channels)", "openlines"),
         ("files", "migrate_files", "Adjuntos", "files"),
         ("webforms", "migrate_webforms", "Formularios web", "webforms"),
