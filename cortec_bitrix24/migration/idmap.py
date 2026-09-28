@@ -62,6 +62,15 @@ ENTITY_CHAT_MESSAGE = "chat_message"
 ENTITY_FILE = "file"
 ENTITY_WEBFORM = "webform"
 
+# Pares (campo de doctype, campo de nombre) con los que un documento
+# cuelga de otro: una nota, un correo o un adjunto de un Lead suprimido
+# tampoco se escribe.
+REFERENCE_PAIRS = (
+    ("reference_doctype", "reference_name"),
+    ("reference_doctype", "reference_docname"),
+    ("attached_to_doctype", "attached_to_name"),
+)
+
 
 def map_name(entity_type: str, bitrix_id) -> str:
     return f"{entity_type}::{bitrix_id}"
@@ -265,6 +274,19 @@ def upsert(
                 bitrix_id=bitrix_id,
             )
 
+    # Anonimizado por una solicitud de supresión (cortec_helpdesk): una
+    # corrida delta no puede volver a escribir los datos del titular.
+    suppressed = _suppressed_target(doctype, target_name, values)
+    if suppressed:
+        ctx.count("skipped")
+        ctx.log(
+            "info",
+            f"{suppressed[0]} {suppressed[1]} fue anonimizado por una solicitud de "
+            f"supresión; no se escribe {entity_type} {bitrix_id}.",
+            bitrix_id=bitrix_id,
+        )
+        return target_name
+
     # Sin cambios desde la última pasada: el caso frecuente en una
     # migración incremental, y el único que no toca la base de datos.
     if target_name and existing_row.payload_hash == hash_value:
@@ -299,6 +321,32 @@ def upsert(
 # ---------------------------------------------------------------------------
 # Internos
 # ---------------------------------------------------------------------------
+
+
+def is_suppressed(doctype: str | None, name: str | None) -> bool:
+    """
+    True si cortec_helpdesk anonimizó ese documento por una solicitud de
+    supresión de datos personales (Ley 8968).
+    """
+    if not doctype or not name:
+        return False
+    if "cortec_helpdesk" not in frappe.get_installed_apps():
+        return False
+    try:
+        from cortec_helpdesk.privacy import is_suppressed as _is_suppressed
+    except ImportError:
+        # cortec_helpdesk anterior a la v1.0.13.
+        return False
+    return _is_suppressed(doctype, name)
+
+
+def _suppressed_target(doctype: str, target_name: str | None, values: dict) -> tuple | None:
+    if is_suppressed(doctype, target_name):
+        return doctype, target_name
+    for doctype_field, name_field in REFERENCE_PAIRS:
+        if is_suppressed(values.get(doctype_field), values.get(name_field)):
+            return values[doctype_field], values[name_field]
+    return None
 
 
 def _set_child_tables(doc, child_tables: dict[str, list[dict]] | None) -> None:

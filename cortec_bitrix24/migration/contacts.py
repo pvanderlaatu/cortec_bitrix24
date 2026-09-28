@@ -40,9 +40,10 @@ Dos cosas que esta fase hace y conviene no perder de vista:
    de contactos.
 
 El consentimiento publicitario (`custom_acepta_promociones`) **no** se
-migra marcado. Bitrix24 no guarda evidencia del canal y la fecha del
-opt-in, y bajo la Ley 8968 la carga de la prueba es del responsable de
-la base de datos: heredar el check sin esa evidencia sería inventarla.
+escribe aquí. En cortec_helpdesk es un reflejo del registro de
+consentimientos, y la evidencia de Bitrix24 (fecha, IP, URL de cada
+envío del formulario) se importa aparte con
+`api.import_webform_consents` (ver migration/consents.py).
 """
 
 import frappe

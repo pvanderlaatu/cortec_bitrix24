@@ -182,12 +182,50 @@ Lo limpio sería un `return` temprano ante
 (la bandera ya se activa durante toda la corrida). Mientras eso no
 exista allí, el interruptor hace el trabajo.
 
-### El consentimiento publicitario NO se hereda
+### Los consentimientos se importan aparte, con su evidencia
 
-`custom_acepta_promociones` se migra siempre en 0. Bitrix24 no guarda
-evidencia del canal ni de la fecha del opt-in, y bajo la Ley 8968 la
-carga de la prueba recae sobre el responsable de la base de datos:
-heredar el check sin esa evidencia sería inventarla.
+Las fases no tocan `custom_acepta_promociones` ni
+`custom_consentimiento`: en cortec_helpdesk ≥ 1.0.12 esos campos se
+derivan del registro de consentimientos (`CORTEC Consent Record`), y
+bajo la Ley 8968 la carga de la prueba recae sobre el responsable de la
+base de datos.
+
+La evidencia sí existe en Bitrix24: los «Acuerdos» de los formularios
+guardan un registro por envío con fecha, IP, URL y la actividad del CRM.
+La API REST no permite listarlo, así que se exporta a mano **después de
+la corrida real**, un CSV por acuerdo:
+
+1. Formularios del CRM → el formulario → **Acuerdos** → el acuerdo →
+   lista de consentimientos («Consentimiento del usuario»).
+2. **TODO** para ver todas las filas en una página, seleccionar la tabla
+   y pegarla en Excel.
+3. Guardar como CSV. Hacen falta las columnas Fecha, Dirección IP, Origen
+   y Dirección; el separador (`;`, `,` o tabulador) y la codificación dan
+   igual.
+4. Subir el CSV como File privado e importar, primero en seco:
+
+```bash
+bench --site <sitio> execute cortec_bitrix24.api.import_webform_consents   --kwargs "{'file_url': '/private/files/promociones.csv', 'agreement': 'promociones', 'dry_run': 1}"
+```
+
+El informe dice cuántas filas se resolvieron por doctype y lista las
+actividades sin titular migrado. Con `dry_run: 0` se crean los
+registros con canal «Bitrix24». Repetir la importación no duplica nada.
+Para la Política de Privacidad se usa `'agreement': 'politica-privacidad'`.
+
+Por defecto no suscribe a nadie a la lista promocional; `'subscribe': 1`
+lo hace. Las fechas son la hora del portal.
+
+### Los documentos suprimidos no se reescriben
+
+Si un titular pidió la supresión de sus datos (cortec_helpdesk ≥ 1.0.13),
+sus documentos quedan en `CORTEC Suppressed Document`. `idmap.upsert`
+no actualiza esos documentos ni crea notas, correos o adjuntos colgados
+de ellos, y la importación de consentimientos los omite. Queda un aviso
+en el log de la corrida.
+
+Lo que no se puede evitar desde aquí es que el titular siga en el portal
+de Bitrix24 mientras esté activo: hay que borrarlo también allí.
 
 ### `custom_account_manager` sí se rellena
 

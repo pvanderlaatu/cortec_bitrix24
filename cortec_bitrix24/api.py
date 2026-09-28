@@ -21,7 +21,8 @@ from __future__ import annotations
 cortec_bitrix24.api
 ====================
 Puntos de entrada de la migración: lanzar una corrida, seguirla, cotejar
-los conteos contra el portal y exportar el mapeo de formularios.
+los conteos contra el portal, exportar el mapeo de formularios e
+importar los consentimientos de los formularios.
 
 Todos exigen System Manager. La migración escribe en el CRM entero y
 puede tardar horas; no es una operación que deba poder disparar un
@@ -220,6 +221,48 @@ def export_webform_mapping() -> dict:
         )
 
     return {"formularios": salida, "endpoint_destino": "cortec_helpdesk.api"}
+
+
+@frappe.whitelist()
+def import_webform_consents(
+    file_url: str, agreement: str = "promociones", dry_run: int = 1, subscribe: int = 0
+) -> dict:
+    """
+    Importa un CSV de la pantalla «Consentimiento del usuario» de
+    Bitrix24 como CORTEC Consent Record (ver migration/consents.py).
+
+    `agreement` — código del CORTEC User Agreement de destino:
+                  «promociones» o «politica-privacidad».
+    `subscribe` — 1 para suscribir a la lista promocional a quien se le
+                  importe un consentimiento publicitario. Por defecto no:
+                  suscribir de golpe cientos de correos es una decisión
+                  aparte.
+
+    Se ejecuta después de la corrida real: necesita el ID Map para
+    llegar de la actividad de Bitrix24 al Lead o Contacto migrado.
+    """
+    frappe.only_for("System Manager")
+
+    if "cortec_helpdesk" not in frappe.get_installed_apps():
+        frappe.throw(_("cortec_helpdesk no está instalado: no hay dónde registrar los consentimientos."))
+
+    if not frappe.db.exists("Bitrix24 ID Map", {"target_doctype": ["in", ("CRM Lead", "Contact")]}):
+        frappe.throw(
+            _("No hay Leads ni Contactos migrados todavía. Importe los consentimientos después de la corrida real.")
+        )
+
+    from cortec_bitrix24.bitrix.client import get_client
+    from cortec_bitrix24.migration.consents import import_consents
+
+    content = frappe.get_doc("File", {"file_url": file_url}).get_content()
+
+    return import_consents(
+        get_client(),
+        content,
+        agreement,
+        dry_run=bool(cint(dry_run)),
+        subscribe=bool(cint(subscribe)),
+    )
 
 
 @frappe.whitelist()

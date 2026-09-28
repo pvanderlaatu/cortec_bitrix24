@@ -107,6 +107,11 @@ def _attach_one(ctx, item: dict, doctype: str, docname: str) -> None:
         ctx.count("skipped")
         return
 
+    # El documento fue anonimizado por una solicitud de supresión.
+    if idmap.is_suppressed(doctype, docname):
+        ctx.count("skipped")
+        return
+
     url = item.get("url") or _download_url(ctx, file_id)
     if not url:
         ctx.log(
