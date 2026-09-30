@@ -34,6 +34,12 @@ así que esto se ejecuta **después** de la corrida real.
 Los registros se crean con cortec_helpdesk.consent_log.register_consent,
 que es idempotente por referencia de origen: importar dos veces el mismo
 CSV no duplica nada.
+
+Las **bajas** de las campañas de correo de Bitrix24 (CRM Marketing) se
+importan con import_unsubscribes() como revocaciones del acuerdo
+«promociones». Sin ellas, suscribir a quienes aceptaron volvería a
+meter en la lista a gente que ya se había dado de baja: cortec_helpdesk
+decide la suscripción por el último evento de cada correo.
 """
 
 import csv
@@ -44,26 +50,40 @@ from datetime import datetime
 
 import frappe
 from frappe import _
+from frappe.utils import now_datetime
 
 from cortec_bitrix24.migration import idmap
 from cortec_bitrix24.migration.activities import OWNER_TYPES
 from cortec_bitrix24.utils import as_int
 
-# Encabezado del CSV (sin tildes, en minúsculas) → clave interna.
+# Clave interna → encabezados aceptados (sin tildes, en minúsculas).
 COLUMNS = {
-    "fecha": "date",
-    "direccion ip": "ip",
-    "origen": "origin",
-    "direccion": "url",
+    "date": ("fecha",),
+    "ip": ("direccion ip",),
+    "origin": ("origen",),
+    "url": ("direccion",),
 }
+
+# CSV de bajas de CRM Marketing. La fecha es opcional.
+UNSUBSCRIBE_COLUMNS = {
+    "email": ("correo", "correo electronico", "e-mail", "email"),
+    "date": ("fecha", "fecha de baja"),
+}
+
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 # Formatos en que llega la fecha: el de la pantalla de Bitrix24 y los
 # que deja Excel si reinterpreta la columna al guardar.
 DATE_FORMATS = (
     "%d/%m/%Y %H:%M:%S",
     "%d/%m/%Y %H:%M",
+    "%d.%m.%Y %H:%M:%S",
+    "%d.%m.%Y %H:%M",
     "%Y-%m-%d %H:%M:%S",
     "%Y-%m-%d %H:%M",
+    "%d/%m/%Y",
+    "%d.%m.%Y",
+    "%Y-%m-%d",
 )
 
 ACTIVITY_PATTERN = re.compile(r"#\s*(\d+)")
@@ -99,6 +119,8 @@ def import_consents(
         "ya_presentes": 0,
         "registrados": 0,
     }
+    if subscribe:
+        informe["lista_promocional"] = {"suscritos": 0, "no_suscritos": 0, "sin_correo": 0}
 
     valid = [r for r in rows if r["activity_id"] and r["date"]]
     owners = resolve_owners(client, [r["activity_id"] for r in valid])
@@ -144,7 +166,104 @@ def import_consents(
         )
         informe["registrados"] += 1
 
+        if subscribe:
+            _count_subscription(informe["lista_promocional"], email)
+
     return informe
+
+
+def _count_subscription(bucket: dict, email: str | None) -> None:
+    """
+    Resultado en la lista promocional. «no_suscritos» son los que
+    cortec_helpdesk dejó fuera por una baja posterior al consentimiento.
+    """
+    from cortec_helpdesk.cortec_helpdesk.doctype.cortec_helpdesk_settings.cortec_helpdesk_settings import (
+        get_promotions_email_group,
+    )
+
+    if not email:
+        bucket["sin_correo"] += 1
+        return
+
+    unsubscribed = frappe.db.get_value(
+        "Email Group Member",
+        {"email_group": get_promotions_email_group(), "email": email},
+        "unsubscribed",
+    )
+    if unsubscribed == 0:
+        bucket["suscritos"] += 1
+    else:
+        bucket["no_suscritos"] += 1
+
+
+def import_unsubscribes(content, dry_run: bool = True) -> dict:
+    """
+    Bajas de las campañas de correo de Bitrix24 → Revocado del acuerdo
+    «promociones», canal «Bitrix24».
+
+    Sin fecha en el export, la baja se fecha en el momento de la
+    importación: gana a cualquier consentimiento anterior. Es lo
+    conservador; el costo es que quien volvió a aceptar en Bitrix24
+    después de darse de baja queda fuera de la lista.
+    """
+    from cortec_helpdesk import consent_log
+
+    consent_log.get_agreement(consent_log.PROMOTIONS_AGREEMENT)
+
+    rows = parse_unsubscribes_csv(content)
+    informe = {
+        "modo": "dry-run" if dry_run else "real",
+        "filas": len(rows),
+        "correos_invalidos": [r["line"] for r in rows if not r["email"]],
+        "sin_fecha": 0,
+        "ya_presentes": 0,
+        "registrados": 0,
+    }
+
+    for row in rows:
+        email = row["email"]
+        if not email:
+            continue
+        if not row["date"]:
+            informe["sin_fecha"] += 1
+
+        source_reference = f"Bitrix24 baja {email}"
+        if frappe.db.exists(
+            consent_log.RECORD_DOCTYPE,
+            {
+                "agreement": consent_log.PROMOTIONS_AGREEMENT,
+                "source_reference": source_reference[: consent_log.DATA_MAX_LENGTH],
+            },
+        ):
+            informe["ya_presentes"] += 1
+            continue
+
+        if dry_run:
+            continue
+
+        consent_log.register_consent(
+            consent_log.PROMOTIONS_AGREEMENT,
+            consent_log.REVOKED,
+            email,
+            channel="Bitrix24",
+            consent_datetime=row["date"] or now_datetime(),
+            reference=_subject_by_email(email),
+            source_reference=source_reference,
+            notes="Baja de las campañas de correo de Bitrix24 (CRM Marketing)."
+            + ("" if row["date"] else " El export no traía fecha: se usó la de la importación."),
+            update_mailing_list=True,
+        )
+        informe["registrados"] += 1
+
+    return informe
+
+
+def _subject_by_email(email: str) -> tuple[str, str] | None:
+    lead = frappe.db.get_value("CRM Lead", {"email": email}, "name")
+    if lead:
+        return "CRM Lead", lead
+    contact = frappe.db.get_value("Contact Email", {"email_id": email}, "parent")
+    return ("Contact", contact) if contact else None
 
 
 def source_reference_for(activity_id: int) -> str:
@@ -158,43 +277,11 @@ def source_reference_for(activity_id: int) -> str:
 
 def parse_csv(content) -> list[dict]:
     """
-    Filas del CSV como dicts {line, date, ip, origin, url, activity_id}.
-
-    Admite UTF-8 (con o sin BOM) y la codificación de Windows que usa
-    Excel al guardar como CSV, y separador `;`, `,` o tabulador (esto
-    último si se pegó la tabla directamente desde el navegador).
+    Filas del CSV de consentimientos como dicts
+    {line, date, ip, origin, url, activity_id}.
     """
-    text = _decode(content)
-    if not text.strip():
-        return []
-
-    try:
-        dialect = csv.Sniffer().sniff(text.splitlines()[0], delimiters=";,\t")
-    except csv.Error:
-        dialect = csv.excel
-
-    reader = csv.reader(io.StringIO(text), dialect)
-    header = [_normalize_header(h) for h in next(reader, [])]
-
-    missing = [h for h in COLUMNS if h not in header]
-    if missing:
-        frappe.throw(
-            _("Al CSV le faltan columnas: {0}. Encabezados leídos: {1}").format(
-                ", ".join(missing), ", ".join(header)
-            )
-        )
-
-    index = {COLUMNS[h]: header.index(h) for h in COLUMNS}
-
     rows = []
-    for line, values in enumerate(reader, start=2):
-        if not any(v.strip() for v in values):
-            continue
-
-        def cell(key):
-            i = index[key]
-            return values[i].strip() if i < len(values) else ""
-
+    for line, cell in _read_table(content, COLUMNS, required=set(COLUMNS)):
         origin = cell("origin")
         rows.append(
             {
@@ -206,8 +293,67 @@ def parse_csv(content) -> list[dict]:
                 "activity_id": parse_activity_id(origin),
             }
         )
-
     return rows
+
+
+def parse_unsubscribes_csv(content) -> list[dict]:
+    """Filas del CSV de bajas como dicts {line, email, date}."""
+    rows = []
+    for line, cell in _read_table(content, UNSUBSCRIBE_COLUMNS, required={"email"}):
+        email = cell("email").strip().lower()
+        rows.append(
+            {
+                "line": line,
+                "email": email if EMAIL_PATTERN.match(email) else None,
+                "date": parse_date(cell("date")),
+            }
+        )
+    return rows
+
+
+def _read_table(content, columns: dict, required: set):
+    """
+    Recorre un CSV y da (número de línea, cell(clave)) por fila no vacía.
+
+    Admite UTF-8 (con o sin BOM) y la codificación de Windows que usa
+    Excel al guardar como CSV, y separador `;`, `,` o tabulador (esto
+    último si se pegó la tabla directamente desde el navegador).
+    """
+    text = _decode(content)
+    if not text.strip():
+        return
+
+    try:
+        dialect = csv.Sniffer().sniff(text.splitlines()[0], delimiters=";,\t")
+    except csv.Error:
+        dialect = csv.excel
+
+    reader = csv.reader(io.StringIO(text), dialect)
+    header = [_normalize_header(h) for h in next(reader, [])]
+
+    index = {}
+    for key, aliases in columns.items():
+        found = next((header.index(a) for a in aliases if a in header), None)
+        if found is not None:
+            index[key] = found
+
+    missing = [columns[k][0] for k in required if k not in index]
+    if missing:
+        frappe.throw(
+            _("Al CSV le faltan columnas: {0}. Encabezados leídos: {1}").format(
+                ", ".join(missing), ", ".join(header)
+            )
+        )
+
+    for line, values in enumerate(reader, start=2):
+        if not any(v.strip() for v in values):
+            continue
+
+        def cell(key, values=values):
+            i = index.get(key)
+            return values[i].strip() if i is not None and i < len(values) else ""
+
+        yield line, cell
 
 
 def parse_date(value: str) -> datetime | None:

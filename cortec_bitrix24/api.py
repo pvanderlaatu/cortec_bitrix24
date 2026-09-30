@@ -266,6 +266,29 @@ def import_webform_consents(
 
 
 @frappe.whitelist()
+def import_marketing_unsubscribes(file_url: str, dry_run: int = 1) -> dict:
+    """
+    Importa las bajas de las campañas de correo de Bitrix24 (CRM
+    Marketing) como revocaciones del consentimiento publicitario.
+
+    Hágalo antes de import_webform_consents con `subscribe`: así nadie
+    que se dio de baja vuelve a la lista promocional. El resultado no
+    depende del orden —cortec_helpdesk decide por el último evento de
+    cada correo—, pero el informe de suscripción de los consentimientos
+    solo es exacto si las bajas ya están.
+    """
+    frappe.only_for("System Manager")
+
+    if "cortec_helpdesk" not in frappe.get_installed_apps():
+        frappe.throw(_("cortec_helpdesk no está instalado: no hay dónde registrar las bajas."))
+
+    from cortec_bitrix24.migration.consents import import_unsubscribes
+
+    content = frappe.get_doc("File", {"file_url": file_url}).get_content()
+    return import_unsubscribes(content, dry_run=bool(cint(dry_run)))
+
+
+@frappe.whitelist()
 def abort_migration(run: str | None = None) -> dict:
     """
     Marca una corrida como abortada.

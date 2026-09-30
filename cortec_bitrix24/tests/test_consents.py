@@ -26,6 +26,7 @@ from cortec_bitrix24.migration.consents import (
     parse_activity_id,
     parse_csv,
     parse_date,
+    parse_unsubscribes_csv,
     resolve_owners,
 )
 
@@ -133,3 +134,29 @@ class TestResolverTitulares(unittest.TestCase):
         # Empresa y actividad inexistente: sin titular.
         self.assertNotIn(5, owners)
         self.assertNotIn(6, owners)
+
+
+class TestParseBajas(unittest.TestCase):
+    """CSV de bajas de las campañas de correo de Bitrix24 (CRM Marketing)."""
+
+    def test_con_fecha(self):
+        rows = parse_unsubscribes_csv(
+            "E-mail;Fecha\r\nAna@Example.com;15.03.2025 10:20:00\r\n".encode("utf-8")
+        )
+        self.assertEqual(rows[0]["email"], "ana@example.com")
+        self.assertEqual(rows[0]["date"], datetime(2025, 3, 15, 10, 20))
+
+    def test_sin_columna_de_fecha(self):
+        rows = parse_unsubscribes_csv("Correo\r\nbeto@example.com\r\n")
+        self.assertEqual(rows[0]["email"], "beto@example.com")
+        self.assertIsNone(rows[0]["date"])
+
+    def test_encabezados_aceptados(self):
+        for encabezado in ("Correo", "Correo electrónico", "E-mail", "Email"):
+            rows = parse_unsubscribes_csv(f"{encabezado}\r\nc@example.com\r\n")
+            self.assertEqual(rows[0]["email"], "c@example.com", encabezado)
+
+    def test_correo_invalido_queda_marcado(self):
+        rows = parse_unsubscribes_csv("Email\r\nno-es-un-correo\r\n")
+        self.assertIsNone(rows[0]["email"])
+        self.assertEqual(rows[0]["line"], 2)

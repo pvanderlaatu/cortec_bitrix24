@@ -35,6 +35,8 @@ corrida interrumpida (worker reiniciado, portal caído) se reanuda donde
 quedó en vez de volver a empezar.
 """
 
+import importlib
+import importlib.util
 import json
 import time
 from contextlib import contextmanager
@@ -233,8 +235,6 @@ def run_migration(run_name: str) -> None:
     Punto de entrada del job en cola. Ejecuta las fases habilitadas y
     deja el Bitrix24 Migration Run cerrado pase lo que pase.
     """
-    import importlib
-
     started = time.monotonic()
     ctx = MigrationContext(run_name)
 
@@ -249,7 +249,7 @@ def run_migration(run_name: str) -> None:
     status = "Completed"
 
     try:
-        with silence_cortec_alerts(ctx), migration_flags():
+        with silence_cortec_alerts(ctx), migration_flags(), quiet_notifications(ctx):
             for key, flag, label, module_name in get_phases():
                 if not ctx.settings.get(flag):
                     continue
@@ -321,14 +321,15 @@ def migration_flags():
     """
     Marca el hilo como "estoy migrando".
 
-    `in_bitrix24_migration` es la bandera que cortec_helpdesk puede
-    consultar para no notificar sobre documentos históricos. Mientras
-    ese guard no exista allí, el silenciado real lo hace
-    silence_cortec_alerts(); la bandera queda como el mecanismo limpio
-    para cuando se añada.
+    `in_bitrix24_migration` la consultan los avisos de cortec_helpdesk
+    (1.0.14 en adelante) para no avisar por documentos históricos ni
+    crear Leads por cada WhatsApp antiguo. silence_cortec_alerts() queda
+    como respaldo para versiones anteriores.
 
-    `in_import` frena además las notificaciones y asignaciones
-    automáticas que el propio Frappe dispara al insertar.
+    `in_import` solo frena las alertas del doctype Notification
+    disparadas por evento. Las notificaciones de asignación, las reglas
+    de asignación y las plantillas de WhatsApp NO lo consultan: de eso
+    se encarga quiet_notifications().
     """
     previous_migration = frappe.flags.get("in_bitrix24_migration")
     previous_import = frappe.flags.get("in_import")
@@ -344,7 +345,7 @@ def migration_flags():
 
 
 # Campos de CORTEC Helpdesk Settings que se apagan durante la corrida.
-CORTEC_ALERT_FIELDS = ("telegram_enabled", "browser_alerts_enabled")
+CORTEC_ALERT_FIELDS = ("telegram_enabled", "browser_alerts_enabled", "raven_enabled")
 
 
 @contextmanager
@@ -371,12 +372,15 @@ def silence_cortec_alerts(ctx):
         yield
         return
 
+    meta = frappe.get_meta("CORTEC Helpdesk Settings")
     previous = {
         field: frappe.db.get_single_value("CORTEC Helpdesk Settings", field)
         for field in CORTEC_ALERT_FIELDS
+        # raven_enabled solo existe desde cortec_helpdesk 1.0.11.
+        if meta.has_field(field)
     }
 
-    for field in CORTEC_ALERT_FIELDS:
+    for field in previous:
         frappe.db.set_single_value("CORTEC Helpdesk Settings", field, 0)
     frappe.db.commit()
 
@@ -394,3 +398,212 @@ def silence_cortec_alerts(ctx):
         frappe.db.commit()
         frappe.clear_cache(doctype="CORTEC Helpdesk Settings")
         ctx.log("info", f"Avisos de CORTEC Helpdesk restaurados: {previous}.")
+
+
+# ---------------------------------------------------------------------------
+# Ni un aviso a agentes ni a clientes
+# ---------------------------------------------------------------------------
+
+# Funciones que notifican o actúan al crear un documento y que NO
+# consultan `in_import`: (módulo, atributo, qué evita, app que lo
+# aporta, opcional). Un atributo "Clase.metodo" se sustituye en la
+# clase. «Opcional» = el módulo no existe en todas las versiones de la
+# app; si no está, no hay nada que silenciar.
+#
+#   notify_assignment    — CRM Lead, Deal y Task asignan a su responsable
+#                          en after_insert; cada asignación crea una
+#                          Notification Log y un correo al agente.
+#   notify_assigned_user — la misma asignación, en la campana de /crm.
+#   add_assign_comment   — «X asignó a Y» en el timeline, con la fecha
+#                          de la migración.
+#   apply                — reglas de asignación (round-robin) sobre el
+#                          histórico.
+#   notify_agent         — aviso en /crm por cada WhatsApp entrante.
+#   _enabled             — automatizaciones de Frappe CRM, que reaccionan
+#                          a correos y WhatsApp nuevos (solo se apagan
+#                          solas en install/migrate).
+#   run_server_script_for_doc_event — plantillas de WhatsApp que
+#                          frappe_whatsapp envía al CLIENTE en eventos de
+#                          documento (p. ej. «al crear un Lead»).
+QUIET_TARGETS = (
+    ("frappe.desk.form.assign_to", "notify_assignment", "correo de asignación", "frappe", False),
+    ("crm.api.todo", "notify_assigned_user", "aviso de asignación en /crm", "crm", False),
+    (
+        "frappe.desk.doctype.todo.todo",
+        "ToDo.add_assign_comment",
+        "comentario de asignación",
+        "frappe",
+        False,
+    ),
+    (
+        "frappe.automation.doctype.assignment_rule.assignment_rule",
+        "apply",
+        "reglas de asignación",
+        "frappe",
+        False,
+    ),
+    ("crm.api.whatsapp", "notify_agent", "aviso de WhatsApp en /crm", "crm", False),
+    ("crm.automation.events", "_enabled", "automatizaciones de Frappe CRM", "crm", True),
+    (
+        "frappe_whatsapp.utils",
+        "run_server_script_for_doc_event",
+        "plantillas automáticas de WhatsApp",
+        "frappe_whatsapp",
+        False,
+    ),
+)
+
+# Doctypes que escribe la migración: los que pueden disparar una alerta
+# programada («Days Before/After») sobre un documento histórico.
+MIGRATED_DOCTYPES = (
+    "CRM Lead",
+    "CRM Deal",
+    "CRM Task",
+    "CRM Organization",
+    "Contact",
+    "Communication",
+    "WhatsApp Message",
+    "FCRM Note",
+)
+
+
+def _quiet(*args, **kwargs):
+    # None también sirve de «no» para los interruptores (_enabled).
+    return None
+
+
+@contextmanager
+def quiet_notifications(ctx):
+    """
+    Silencia, SOLO en el proceso de este worker, todo lo que notificaría
+    a un agente o a un cliente por un documento migrado.
+
+    Las asignaciones se crean igual (ToDo, `_assign`, DocShare): /crm
+    muestra a cada agente lo suyo; lo que se omite es el aviso. El resto
+    del sitio —web, otros workers— sigue notificando con normalidad.
+
+    Si alguno de los atributos ya no existe (una versión nueva de
+    Frappe, CRM o frappe_whatsapp lo renombró), la corrida real se
+    aborta antes de escribir nada: un silenciado incompleto significa
+    miles de correos a agentes o de WhatsApp a clientes.
+    """
+    installed = set(frappe.get_installed_apps())
+    targets, missing = [], []
+
+    for module_name, attribute, label, app, optional in QUIET_TARGETS:
+        if app not in installed:
+            continue
+        if optional and not _module_exists(module_name):
+            continue
+        owner, name = _resolve_target(module_name, attribute)
+        if owner is None:
+            missing.append(f"{module_name}.{attribute} ({label})")
+        else:
+            targets.append((owner, name, label))
+
+    _report_scheduled_alerts(ctx)
+
+    if missing:
+        detail = "; ".join(missing)
+        if not ctx.dry_run:
+            raise B24FatalError(
+                "QUIET_NOTIFICATIONS",
+                "No se pueden silenciar las notificaciones: falta " + detail + ". "
+                "Revise quiet_notifications() en cortec_bitrix24/migration/runner.py.",
+            )
+        _note_before(ctx, "notificaciones_sin_silenciar", missing)
+        ctx.log("warning", f"La corrida real se abortaría: falta {detail}.")
+
+    if ctx.dry_run:
+        # El dry-run no escribe nada: solo comprueba y avisa.
+        yield
+        return
+
+    originals = [(owner, name, getattr(owner, name)) for owner, name, _label in targets]
+    for owner, name, _label in targets:
+        setattr(owner, name, _quiet)
+    ctx.log(
+        "info",
+        "Notificaciones silenciadas durante la corrida: "
+        + ", ".join(label for _owner, _name, label in targets)
+        + ".",
+    )
+
+    try:
+        yield
+    finally:
+        for owner, name, original in originals:
+            setattr(owner, name, original)
+        ctx.log("info", "Notificaciones restauradas.")
+
+
+def _module_exists(module_name: str) -> bool:
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except ModuleNotFoundError:
+        # Tampoco existe el paquete padre (p. ej. crm.automation).
+        return False
+
+
+def _resolve_target(module_name: str, attribute: str):
+    """(objeto dueño, nombre del atributo), o (None, None) si no existe."""
+    try:
+        owner = importlib.import_module(module_name)
+    except ImportError:
+        return None, None
+
+    *path, name = attribute.split(".")
+    for part in path:
+        owner = getattr(owner, part, None)
+        if owner is None:
+            return None, None
+
+    return (owner, name) if callable(getattr(owner, name, None)) else (None, None)
+
+
+def _report_scheduled_alerts(ctx) -> None:
+    """
+    Alertas programadas activas sobre doctypes migrados.
+
+    Las ejecuta el scheduler, fuera de este proceso, así que no se
+    pueden silenciar desde aquí: una alerta «1 día antes del
+    vencimiento» avisaría por cada tarea migrada que venza mañana. Se
+    listan para desactivarlas a mano antes de la corrida real.
+    """
+    found = []
+
+    if frappe.db.exists("DocType", "Notification"):
+        for row in frappe.get_all(
+            "Notification",
+            filters={
+                "enabled": 1,
+                "event": ["in", ("Days Before", "Days After")],
+                "document_type": ["in", MIGRATED_DOCTYPES],
+            },
+            fields=["name", "document_type", "event"],
+        ):
+            found.append(f"Notification «{row.name}» ({row.document_type}, {row.event})")
+
+    if frappe.db.exists("DocType", "WhatsApp Notification"):
+        for row in frappe.get_all("WhatsApp Notification", fields=["*"]):
+            if row.get("disabled"):
+                continue
+            if row.get("reference_doctype") not in MIGRATED_DOCTYPES:
+                continue
+            if (row.get("notification_type") or "") == "DocType Event":
+                # Estas sí las silencia quiet_notifications().
+                continue
+            found.append(f"WhatsApp Notification «{row.name}» ({row.get('reference_doctype')})")
+
+    if found:
+        _note_before(ctx, "alertas_programadas_a_desactivar", found)
+        ctx.log(
+            "warning",
+            "Alertas programadas activas sobre doctypes migrados (desactívelas antes "
+            "de la corrida real y reactívelas al día siguiente): " + "; ".join(found),
+        )
+
+
+def _note_before(ctx, key: str, value) -> None:
+    """Anota en el informe, fuera de cualquier fase."""
+    ctx.summary.setdefault("antes_de_empezar", {})[key] = value

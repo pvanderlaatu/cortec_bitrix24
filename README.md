@@ -111,7 +111,10 @@ coteja la migración al terminar.
 - conteos previstos por entidad,
 - usuarios de Bitrix24 sin `User` equivalente en Frappe,
 - etapas sin mapear,
-- campos `UF_CRM_*` que se van a crear.
+- campos `UF_CRM_*` que se van a crear,
+- en *antes_de_empezar*: las **alertas programadas** que hay que
+  desactivar y, si las hubiera, las notificaciones que la corrida real
+  no podría silenciar (ver «Ni agentes ni clientes reciben avisos»).
 
 ### 4. Revisión manual antes del corte
 
@@ -127,6 +130,10 @@ Con el informe en la mano:
    que no valga la pena arrastrar.
 
 ### 5. Corrida real
+
+Antes: desactivar las alertas programadas que listó la corrida en seco
+(*Notification* y *WhatsApp Notification*). Reactivarlas **al día
+siguiente**.
 
 **Migrar → Migración real.** Exige que exista una corrida en seco
 completada. Se encola en la cola `long` (los workers de esa cola deben
@@ -165,22 +172,45 @@ a uno, todos los WhatsApp que los agentes escribieron en años.
 lo restaura al salir. Si el método no existe (una versión nueva de
 `frappe_whatsapp` lo movió), **la fase se aborta** en lugar de seguir.
 
-### Los avisos de CORTEC Helpdesk se apagan durante la corrida
+### Ni agentes ni clientes reciben avisos
 
-Migrar el histórico dispara `telegram.on_communication` y
-`whatsapp.route_unclaimed_message`. Sin protección, eso son miles de
-mensajes de Telegram a los agentes y un CRM Lead espurio por cada
-WhatsApp antiguo.
+La migración no debe notificar a nadie. Pero Frappe, Frappe CRM y
+frappe_whatsapp notifican al crear documentos, y casi nada de eso mira
+la bandera `in_import`. Revisado en su código:
 
-`runner.silence_cortec_alerts` pone a 0 `telegram_enabled` y
-`browser_alerts_enabled` de `CORTEC Helpdesk Settings` y los restaura en
-el `finally`. Si el worker muere de golpe quedarían apagados: **revisar
-esos dos checks al terminar** es parte del cierre.
+| Qué dispara | A quién | Cómo se evita |
+| --- | --- | --- |
+| CRM Lead, Deal y Task asignan a su responsable al crearse: Notification Log y **correo** («X le asignó…») | Agente | `quiet_notifications` |
+| La misma asignación en la campana de `/crm` | Agente | `quiet_notifications` |
+| Comentario «X asignó a Y» con la fecha de la migración | Timeline | `quiet_notifications` |
+| Reglas de asignación (round-robin) | Agente | `quiet_notifications` |
+| Aviso en `/crm` por cada WhatsApp entrante | Agente | `quiet_notifications` |
+| Automatizaciones de Frappe CRM sobre correos y WhatsApp nuevos | Cliente o agente | `quiet_notifications` |
+| **Plantillas automáticas de WhatsApp** por evento (p. ej. «al crear un Lead») | **Cliente** | `quiet_notifications` |
+| Reenvío del histórico de WhatsApp | Cliente | `openlines._dont_send` |
+| Avisos de CORTEC Helpdesk (Telegram, navegador, Raven) y Leads por WhatsApp antiguos | Agente | Bandera `in_bitrix24_migration` en cortec_helpdesk ≥ 1.0.14; con versiones anteriores, `silence_cortec_alerts` |
+| Alertas *Notification* disparadas por evento | Cliente o agente | `in_import` |
+| Alertas **programadas** («Days Before/After», WhatsApp programados) | Cliente o agente | **A mano**: la corrida en seco las lista |
 
-Lo limpio sería un `return` temprano ante
-`frappe.flags.in_bitrix24_migration` en los hooks de `cortec_helpdesk`
-(la bandera ya se activa durante toda la corrida). Mientras eso no
-exista allí, el interruptor hace el trabajo.
+`runner.quiet_notifications` sustituye esas funciones por no-ops **solo
+en el proceso del worker que ejecuta la corrida**, y las restaura al
+terminar. El resto del sitio sigue notificando con normalidad. Las
+asignaciones sí se crean: `/crm` muestra a cada agente lo suyo en
+«Asignados a mí».
+
+Si una versión nueva de Frappe, Frappe CRM o frappe_whatsapp renombra
+alguna de esas funciones, **la corrida real se aborta** antes de
+escribir nada, y la corrida en seco lo avisa.
+
+Las alertas programadas las ejecuta el scheduler, fuera de la corrida:
+una alerta «1 día antes del vencimiento» avisaría por cada tarea
+migrada que venza mañana. Por eso hay que desactivarlas antes de la
+corrida real (paso 5).
+
+`silence_cortec_alerts` sigue apagando `telegram_enabled`,
+`browser_alerts_enabled` y `raven_enabled` como respaldo. Si el worker
+muere de golpe quedarían apagados: **revisar esos checks al terminar**
+es parte del cierre.
 
 ### Los consentimientos se importan aparte, con su evidencia
 
@@ -205,7 +235,8 @@ la corrida real**, un CSV por acuerdo:
 4. Subir el CSV como File privado e importar, primero en seco:
 
 ```bash
-bench --site <sitio> execute cortec_bitrix24.api.import_webform_consents   --kwargs "{'file_url': '/private/files/promociones.csv', 'agreement': 'promociones', 'dry_run': 1}"
+bench --site <sitio> execute cortec_bitrix24.api.import_webform_consents \
+  --kwargs "{'file_url': '/private/files/promociones.csv', 'agreement': 'promociones', 'dry_run': 1}"
 ```
 
 El informe dice cuántas filas se resolvieron por doctype y lista las
@@ -213,8 +244,36 @@ actividades sin titular migrado. Con `dry_run: 0` se crean los
 registros con canal «Bitrix24». Repetir la importación no duplica nada.
 Para la Política de Privacidad se usa `'agreement': 'politica-privacidad'`.
 
-Por defecto no suscribe a nadie a la lista promocional; `'subscribe': 1`
-lo hace. Las fechas son la hora del portal.
+Las fechas son la hora del portal.
+
+#### Suscribir a la lista promocional
+
+Para suscribir a quienes aceptaron el acuerdo «promociones»:
+
+1. **Primero, las bajas.** Si se enviaron campañas desde Bitrix24 (CRM
+   Marketing), exportar la lista de personas que se dieron de baja a un
+   CSV con una columna de correo («Correo», «E-mail» o «Email») y, si la
+   trae, «Fecha». Importarla:
+
+   ```bash
+   bench --site <sitio> execute cortec_bitrix24.api.import_marketing_unsubscribes \
+     --kwargs "{'file_url': '/private/files/bajas.csv', 'dry_run': 1}"
+   ```
+
+   Cada baja queda como revocación del consentimiento publicitario. Si
+   el CSV no trae fecha se usa la de la importación: la baja gana a
+   cualquier consentimiento anterior.
+
+2. **Después, los consentimientos con `'subscribe': 1`.**
+
+cortec_helpdesk decide por el **último evento** de cada correo:
+
+- solo suscribe si es un consentimiento otorgado;
+- un consentimiento histórico nunca reactiva a quien se dio de baja;
+- nadie con una baja global de correos del sitio se suscribe.
+
+El informe cuenta los suscritos, los que no por una baja posterior y los
+que no tienen correo. Dar de alta en la lista **no envía ningún correo**.
 
 ### Los documentos suprimidos no se reescriben
 
@@ -356,7 +415,9 @@ Cubren lo que falla en silencio: la paginación por ID del cliente (un
 cursor que no avanza da un bucle infinito; uno que salta pierde
 registros), la serialización de los comandos de `batch`, que el token
 del webhook nunca salga en un log, y la normalización de teléfonos —de
-la que depende que el mismo cliente no acabe siendo tres contactos.
+la que depende que el mismo cliente no acabe siendo tres contactos—, y
+que la corrida no notifique a nadie: el silenciado se aplica y se
+restaura, y una corrida real se aborta si falta algo por silenciar.
 
 ## Notas
 
