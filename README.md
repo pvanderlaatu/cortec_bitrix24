@@ -443,6 +443,6 @@ left unsilenced.
 - It does not modify existing Frappe, CRM, Helpdesk or ERPNext doctypes.
 - It does not declare `erpnext` as a dependency (GPL-3.0) so as not to
   mix it with AGPL-3.0, same as `cortec_helpdesk`.
-- Compatible with Frappe v15/v16 and Frappe CRM v2.x.
+- Compatible with Frappe v15/v16 and Frappe CRM v1.86.0.
 - It does not require ERPNext: tasks go to Frappe CRM's `CRM Task`, not
   to ERPNext's `Task`/`Project` doctypes (GPL-3.0).

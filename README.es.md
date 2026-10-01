@@ -439,6 +439,6 @@ restaura, y una corrida real se aborta si falta algo por silenciar.
 - No modifica doctypes existentes de Frappe, CRM, Helpdesk ni ERPNext.
 - No declara `erpnext` como dependencia (GPL-3.0) para no mezclarlo con
   AGPL-3.0, igual que `cortec_helpdesk`.
-- Compatible con Frappe v15/v16 y Frappe CRM v2.x.
+- Compatible con Frappe v15/v16 y Frappe CRM v1.86.0.
 - No requiere ERPNext: las tareas van a `CRM Task` de Frappe CRM, y no a
   los doctypes `Task`/`Project` de ERPNext (GPL-3.0).
