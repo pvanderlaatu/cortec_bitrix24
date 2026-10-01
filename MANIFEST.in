@@ -1,6 +1,7 @@
 include MANIFEST.in
 include requirements.txt
 include README.md
+include README.es.md
 include LICENSE
 recursive-include cortec_bitrix24 *.css *.csv *.html *.ico *.js *.json *.md *.png *.py *.svg *.txt
 recursive-exclude cortec_bitrix24 *.pyc

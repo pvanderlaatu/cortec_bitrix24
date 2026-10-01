@@ -1,98 +1,104 @@
 # CORTEC Bitrix24
 
-Migración de Bitrix24 a Frappe CRM para Corporación de Tecnología CORTEC S.R.L.
+**English** · [Español](README.es.md)
 
-## Licencia
+Bitrix24 to Frappe CRM migration for Corporación de Tecnología CORTEC S.R.L.
 
-AGPL-3.0-or-later — Ver archivo [LICENSE](LICENSE).
+The app's interface (field labels, buttons, messages and run reports) is
+in Spanish. This document quotes those labels as they appear on screen.
 
-## Qué hace
+## License
 
-Trae a Frappe CRM el contenido de un portal de Bitrix24 leyéndolo por su
-API REST, de forma **incremental e idempotente**: la migración se puede
-correr en seco, repetir tantas veces como haga falta, y rematar con una
-pasada delta el día del corte.
+AGPL-3.0-or-later — see [LICENSE](LICENSE).
 
-| Fase | En Bitrix24 | En Frappe |
-| ---- | ----------- | --------- |
-| 1 | Etapas, fuentes, industrias, embudos | CRM Lead Status, CRM Deal Status, CRM Lead Source, CRM Industry |
-| 2 | Usuarios | Bitrix24 User Map (empareja por correo; **no crea usuarios**) |
-| 3 | Campos personalizados `UF_CRM_*` | Custom Field en el doctype destino |
-| 4 | Empresas | CRM Organization |
-| 5 | Contactos | Contact (+ Contact Email / Contact Phone) |
+## What it does
+
+It brings the contents of a Bitrix24 portal into Frappe CRM by reading
+its REST API, **incrementally and idempotently**: the migration can be
+run as a dry run, repeated as many times as needed, and finished with a
+delta pass on cutover day.
+
+| Phase | In Bitrix24 | In Frappe |
+| ----- | ----------- | --------- |
+| 1 | Stages, sources, industries, pipelines | CRM Lead Status, CRM Deal Status, CRM Lead Source, CRM Industry |
+| 2 | Users | Bitrix24 User Map (matched by email; **does not create users**) |
+| 3 | Custom fields `UF_CRM_*` | Custom Field on the target doctype |
+| 4 | Companies | CRM Organization |
+| 5 | Contacts | Contact (+ Contact Email / Contact Phone) |
 | 6 | Leads | CRM Lead |
-| 7 | Negociaciones | CRM Deal (+ tabla de contactos) |
-| 8 | Correos, llamadas, to-dos y comentarios del timeline del CRM | Communication, CRM Call Log, CRM Task, FCRM Note |
-| 9 | Módulo Tareas y proyectos (`tasks.task.*`) | CRM Task |
-| 10 | WhatsApp de Open Channels | WhatsApp Message |
-| 11 | Adjuntos | File (se bajan junto con su correo, mensaje o tarea) |
-| 12 | Formularios web | Bitrix24 Web Form (mapeo de campos, para el corte) |
+| 7 | Deals | CRM Deal (+ contacts table) |
+| 8 | Emails, calls, to-dos and comments from the CRM timeline | Communication, CRM Call Log, CRM Task, FCRM Note |
+| 9 | Tasks and Projects module (`tasks.task.*`) | CRM Task |
+| 10 | WhatsApp from Open Channels | WhatsApp Message |
+| 11 | Attachments | File (downloaded along with their email, message or task) |
+| 12 | Web forms | Bitrix24 Web Form (field mapping, for the cutover) |
 
-**No** migra: tickets de soporte a Helpdesk (Bitrix24 se usa aquí como CRM),
-presupuestos ni facturas.
+It does **not** migrate support tickets to Helpdesk (Bitrix24 is used
+here as a CRM), quotes or invoices.
 
-## Estructura
+## Structure
 
 ```
 cortec_bitrix24/
 ├── LICENSE
 ├── setup.py
 ├── requirements.txt
-├── README.md
+├── README.md               # English; README.es.md in Spanish
 └── cortec_bitrix24/
     ├── __init__.py
     ├── hooks.py
     ├── api.py                  # start_migration, verify_counts, export_webform_mapping
-    ├── utils.py                # teléfonos E.164, fechas, BBCode
+    ├── utils.py                # E.164 phones, dates, BBCode
     ├── bitrix/
-    │   ├── client.py           # batch, paginación por ID, rate limit, reintentos
+    │   ├── client.py           # batch, ID pagination, rate limit, retries
     │   └── errors.py
     ├── migration/
-    │   ├── runner.py           # fases, checkpoints, silenciado de avisos
-    │   ├── idmap.py            # upsert() — el núcleo de la idempotencia
-    │   ├── dicts.py            # fase 1        ├── tasks.py       # fase 9
-    │   ├── users.py            # fase 2        ├── openlines.py   # fase 10
-    │   ├── userfields.py       # fase 3        ├── files.py       # fase 11
-    │   ├── companies.py        # fase 4        └── webforms.py    # fase 12
-    │   ├── contacts.py         # fase 5
-    │   ├── leads.py            # fase 6
-    │   ├── deals.py            # fase 7
-    │   └── activities.py       # fase 8
+    │   ├── runner.py           # phases, checkpoints, notification silencing
+    │   ├── idmap.py            # upsert() — the core of idempotency
+    │   ├── dicts.py            # phase 1       ├── tasks.py       # phase 9
+    │   ├── users.py            # phase 2       ├── openlines.py   # phase 10
+    │   ├── userfields.py       # phase 3       ├── files.py       # phase 11
+    │   ├── companies.py        # phase 4       └── webforms.py    # phase 12
+    │   ├── contacts.py         # phase 5
+    │   ├── leads.py            # phase 6
+    │   ├── deals.py            # phase 7
+    │   └── activities.py       # phase 8
     └── tests/
 ```
 
-## Instalación
+## Installation
 
 ```bash
 bench get-app cortec_bitrix24 https://github.com/pvanderlaatu/cortec_bitrix24
-bench --site sitio.dominio.com install-app cortec_bitrix24
-bench --site sitio.dominio.com migrate
+bench --site site.domain.com install-app cortec_bitrix24
+bench --site site.domain.com migrate
 bench restart
 ```
 
-Requiere `crm` (Frappe CRM). `frappe_whatsapp` y `cortec_helpdesk` son
-opcionales y se detectan en tiempo de ejecución.
+Requires `crm` (Frappe CRM). `frappe_whatsapp` and `cortec_helpdesk` are
+optional and detected at runtime.
 
-## Configuración
+## Setup
 
-### 1. Webhook entrante en Bitrix24
+### 1. Inbound webhook in Bitrix24
 
-En el portal: **Recursos para desarrolladores → Otros → Webhook entrante**.
-Marcar los permisos:
+In the portal: **Developer resources → Other → Inbound webhook**.
+Grant these permissions:
 
-| Permiso | Lo necesita |
+| Permission | Needed for |
 | --- | --- |
-| **CRM** (`crm`) | Leads, negociaciones, contactos, empresas, actividades, formularios |
-| **Usuarios** (`user`) | Mapeo de responsables |
-| **Drive** (`disk`) | Adjuntos |
-| **Canales abiertos** (`imopenlines`) | Conversaciones de WhatsApp |
-| **Chat y notificaciones** (`im`) | Los mensajes de esas conversaciones |
-| **Tareas** (`task`) | Módulo Tareas y proyectos (fase 9) |
-| **Grupos de trabajo** (`sonet_group`) | Proyecto de cada tarea |
+| **CRM** (`crm`) | Leads, deals, contacts, companies, activities, forms |
+| **Users** (`user`) | Mapping owners |
+| **Drive** (`disk`) | Attachments |
+| **Open Channels** (`imopenlines`) | WhatsApp conversations |
+| **Chat and notifications** (`im`) | The messages in those conversations |
+| **Tasks** (`task`) | Tasks and Projects module (phase 9) |
+| **Workgroups** (`sonet_group`) | The project of each task |
 
-Sin un permiso, la fase que lo usa falla o queda vacía; el resto sigue.
+Without a permission, the phase that uses it fails or comes out empty;
+the rest carry on.
 
-Copiar la URL, que tiene esta forma:
+Copy the URL, which looks like this:
 
 ```
 https://cortec.bitrix24.es/rest/1/xxxxxxxxxxxxxxxx/
@@ -100,278 +106,278 @@ https://cortec.bitrix24.es/rest/1/xxxxxxxxxxxxxxxx/
 
 ### 2. Bitrix24 Migration Settings
 
-| Campo | Valor recomendado |
+| Field | Recommended value |
 | ----- | ----------------- |
-| URL del portal | `https://cortec.bitrix24.es` |
-| URL del webhook | la del paso anterior |
-| Pausa entre peticiones | `0.5` s (el portal admite ~2 req/s) |
-| Sub-llamadas por batch | `50` (tope de Bitrix24) |
-| Usuario de respaldo | el agente que reciba lo que no tenga dueño |
-| Código de país | `506` |
-| Corrida en seco | ✅ hasta haber revisado el informe |
-| Silenciar avisos de CORTEC Helpdesk | ✅ |
-| Conservar fechas originales | ✅ |
+| Portal URL | `https://cortec.bitrix24.es` |
+| Webhook URL (*URL del webhook entrante*) | the one from the previous step |
+| Pause between requests | `0.5` s (the portal allows ~2 req/s) |
+| Sub-calls per batch | `50` (Bitrix24's cap) |
+| Fallback user (*Usuario de respaldo*) | the agent who receives whatever has no owner |
+| Country code | `506` |
+| Dry run (*Corrida en seco*) | ✅ until the report has been reviewed |
+| Silence CORTEC Helpdesk alerts | ✅ |
+| Preserve original dates | ✅ |
 
-Pulsar **Probar conexión**: debe devolver el perfil del webhook y el
-número de registros de cada colección. Esas cifras son contra las que se
-coteja la migración al terminar.
+Press **Probar conexión** (test connection). It saves the form first,
+then returns the webhook's profile and the number of records in each
+collection. Those are the figures the migration is checked against when
+it finishes.
 
-### 3. Corrida en seco
+### 3. Dry run
 
-**Migrar → Corrida en seco.** No escribe nada; produce un
-`Bitrix24 Migration Run` cuyo campo *Informe* trae:
+**Migrar → Corrida en seco.** It writes nothing; it produces a
+`Bitrix24 Migration Run` whose *Informe* (report) field contains:
 
-- conteos previstos por entidad,
-- usuarios de Bitrix24 sin `User` equivalente en Frappe,
-- etapas sin mapear,
-- campos `UF_CRM_*` que se van a crear,
-- en *antes_de_empezar*: las **alertas programadas** que hay que
-  desactivar y, si las hubiera, las notificaciones que la corrida real
-  no podría silenciar (ver «Ni agentes ni clientes reciben avisos»).
+- expected counts per entity,
+- Bitrix24 users with no matching `User` in Frappe,
+- unmapped stages,
+- the `UF_CRM_*` fields that will be created,
+- under *antes_de_empezar*: the **scheduled alerts** that must be
+  disabled and, if any, the notifications the real run would not be able
+  to silence (see "Neither agents nor customers are notified").
 
-### 4. Revisión manual antes del corte
+### 4. Manual review before the cutover
 
-Con el informe en la mano:
+With the report in hand:
 
-1. **Bitrix24 User Map** — rellenar el campo *Usuario de Frappe* de los
-   agentes que deban conservar sus leads. Lo que se ponga a mano no se
-   vuelve a pisar en las pasadas siguientes.
-2. **Bitrix24 Status Map** — corregir las etapas que la heurística no
-   acertó. Ojo al campo *Tipo*: solo `Open` cuenta como "abierto" para
-   el enrutado de WhatsApp de `cortec_helpdesk`.
-3. **Bitrix24 Field Map** — marcar *Omitir* en los campos personalizados
-   que no valga la pena arrastrar.
+1. **Bitrix24 User Map** — fill in the *Usuario de Frappe* field for the
+   agents who should keep their leads. Anything entered by hand is not
+   overwritten on later passes.
+2. **Bitrix24 Status Map** — fix the stages the heuristic got wrong.
+   Mind the *Tipo* field: only `Open` counts as "open" for
+   `cortec_helpdesk`'s WhatsApp routing.
+3. **Bitrix24 Field Map** — tick *Omitir* (skip) on the custom fields
+   that are not worth carrying over.
 
-### 5. Corrida real
+### 5. Real run
 
-Antes: desactivar las alertas programadas que listó la corrida en seco
-(*Notification* y *WhatsApp Notification*). Reactivarlas **al día
-siguiente**.
+Beforehand: disable the scheduled alerts the dry run listed
+(*Notification* and *WhatsApp Notification*). Re-enable them **the next
+day**.
 
-**Migrar → Migración real.** Exige que exista una corrida en seco
-completada. Se encola en la cola `long` (los workers de esa cola deben
-estar activos) y puede tardar horas: a dos peticiones por segundo, 40 000
-negociaciones son unas cuantas.
+**Migrar → Migración real.** It requires a completed dry run. It is
+queued on the `long` queue (the workers for that queue must be running)
+and can take hours: at two requests per second, 40,000 deals add up.
 
-La corrida se puede parar y relanzar: cada fase guarda su cursor y la
-siguiente pasada sigue donde quedó.
+The run can be stopped and relaunched: each phase saves its cursor and
+the next pass resumes where it left off.
 
-### 6. Cotejo
+### 6. Verification
 
 ```python
 import frappe
 frappe.call("cortec_bitrix24.api.verify_counts")
 ```
 
-### 7. Corte
+### 7. Cutover
 
-1. Última pasada delta (el propio botón la lanza usando la fecha de la
-   última corrida completa).
-2. Exportar el mapeo de formularios:
-   `frappe.call("cortec_bitrix24.api.export_webform_mapping")`, y usarlo
-   para reapuntar el formulario del sitio al Worker `leads-intake`.
-3. Poner el portal de Bitrix24 en solo lectura.
+1. Final delta pass (the button launches it using the date of the last
+   completed run).
+2. Export the form mapping:
+   `frappe.call("cortec_bitrix24.api.export_webform_mapping")`, and use
+   it to repoint the site's form to the `leads-intake` Worker.
+3. Set the Bitrix24 portal to read-only.
 
-## Decisiones que conviene conocer
+## Decisions worth knowing about
 
-### El envío de WhatsApp se desactiva durante la fase 10
+### WhatsApp sending is disabled during phase 10
 
-`WhatsAppMessage.before_insert` de `frappe_whatsapp` llama a
-`send_outgoing()`, que **manda el mensaje a Meta** cuando el tipo es
-`Outgoing`. Insertar el histórico sin más reenviaría a los clientes, uno
-a uno, todos los WhatsApp que los agentes escribieron en años.
+`frappe_whatsapp`'s `WhatsAppMessage.before_insert` calls
+`send_outgoing()`, which **sends the message to Meta** when the type is
+`Outgoing`. Inserting the history as is would resend to customers, one
+by one, every WhatsApp message agents wrote over the years.
 
-`openlines.py` sustituye ese método por un no-op mientras dura la fase y
-lo restaura al salir. Si el método no existe (una versión nueva de
-`frappe_whatsapp` lo movió), **la fase se aborta** en lugar de seguir.
+`openlines.py` replaces that method with a no-op for the duration of the
+phase and restores it on exit. If the method does not exist (a newer
+`frappe_whatsapp` moved it), **the phase aborts** instead of carrying on.
 
-### Ni agentes ni clientes reciben avisos
+### Neither agents nor customers are notified
 
-La migración no debe notificar a nadie. Pero Frappe, Frappe CRM y
-frappe_whatsapp notifican al crear documentos, y casi nada de eso mira
-la bandera `in_import`. Revisado en su código:
+The migration must not notify anyone. But Frappe, Frappe CRM and
+frappe_whatsapp notify when documents are created, and almost none of
+that checks the `in_import` flag. Verified in their code:
 
-| Qué dispara | A quién | Cómo se evita |
+| What fires | To whom | How it is prevented |
 | --- | --- | --- |
-| CRM Lead, Deal y Task asignan a su responsable al crearse: Notification Log y **correo** («X le asignó…») | Agente | `quiet_notifications` |
-| La misma asignación en la campana de `/crm` | Agente | `quiet_notifications` |
-| Comentario «X asignó a Y» con la fecha de la migración | Timeline | `quiet_notifications` |
-| Reglas de asignación (round-robin) | Agente | `quiet_notifications` |
-| Aviso en `/crm` por cada WhatsApp entrante | Agente | `quiet_notifications` |
-| Automatizaciones de Frappe CRM sobre correos y WhatsApp nuevos | Cliente o agente | `quiet_notifications` |
-| **Plantillas automáticas de WhatsApp** por evento (p. ej. «al crear un Lead») | **Cliente** | `quiet_notifications` |
-| Reenvío del histórico de WhatsApp | Cliente | `openlines._dont_send` |
-| Avisos de CORTEC Helpdesk (Telegram, navegador, Raven) y Leads por WhatsApp antiguos | Agente | Bandera `in_bitrix24_migration` en cortec_helpdesk ≥ 1.0.14; con versiones anteriores, `silence_cortec_alerts` |
-| Alertas *Notification* disparadas por evento | Cliente o agente | `in_import` |
-| Alertas **programadas** («Days Before/After», WhatsApp programados) | Cliente o agente | **A mano**: la corrida en seco las lista |
+| CRM Lead, Deal and Task assign their owner on creation: Notification Log and **email** ("X assigned … to you") | Agent | `quiet_notifications` |
+| The same assignment in the `/crm` bell | Agent | `quiet_notifications` |
+| "X assigned Y" comment dated on migration day | Timeline | `quiet_notifications` |
+| Assignment rules (round-robin) | Agent | `quiet_notifications` |
+| `/crm` notification for every inbound WhatsApp | Agent | `quiet_notifications` |
+| Frappe CRM automations on new emails and WhatsApp messages | Customer or agent | `quiet_notifications` |
+| **Automatic WhatsApp templates** on document events (e.g. "on Lead creation") | **Customer** | `quiet_notifications` |
+| Resending the WhatsApp history | Customer | `openlines._dont_send` |
+| CORTEC Helpdesk alerts (Telegram, browser, Raven) and Leads created from old WhatsApp messages | Agent | `in_bitrix24_migration` flag in cortec_helpdesk ≥ 1.0.14; with earlier versions, `silence_cortec_alerts` |
+| *Notification* alerts triggered by events | Customer or agent | `in_import` |
+| **Scheduled** alerts ("Days Before/After", scheduled WhatsApp) | Customer or agent | **By hand**: the dry run lists them |
 
-`runner.quiet_notifications` sustituye esas funciones por no-ops **solo
-en el proceso del worker que ejecuta la corrida**, y las restaura al
-terminar. El resto del sitio sigue notificando con normalidad. Las
-asignaciones sí se crean: `/crm` muestra a cada agente lo suyo en
-«Asignados a mí».
+`runner.quiet_notifications` replaces those functions with no-ops **only
+in the worker process running the migration**, and restores them when it
+finishes. The rest of the site keeps notifying as usual. Assignments are
+still created: `/crm` shows each agent their own under "Assigned to me".
 
-Si una versión nueva de Frappe, Frappe CRM o frappe_whatsapp renombra
-alguna de esas funciones, **la corrida real se aborta** antes de
-escribir nada, y la corrida en seco lo avisa.
+If a newer version of Frappe, Frappe CRM or frappe_whatsapp renames any
+of those functions, **the real run aborts** before writing anything, and
+the dry run warns about it.
 
-Las alertas programadas las ejecuta el scheduler, fuera de la corrida:
-una alerta «1 día antes del vencimiento» avisaría por cada tarea
-migrada que venza mañana. Por eso hay que desactivarlas antes de la
-corrida real (paso 5).
+Scheduled alerts are run by the scheduler, outside the migration: a
+"1 day before due date" alert would fire for every migrated task due
+tomorrow. That is why they must be disabled before the real run
+(step 5).
 
-`silence_cortec_alerts` sigue apagando `telegram_enabled`,
-`browser_alerts_enabled` y `raven_enabled` como respaldo. Si el worker
-muere de golpe quedarían apagados: **revisar esos checks al terminar**
-es parte del cierre.
+`silence_cortec_alerts` still switches off `telegram_enabled`,
+`browser_alerts_enabled` and `raven_enabled` as a fallback. If the
+worker is killed abruptly they would stay off: **checking those
+checkboxes when the run ends** is part of the wrap-up.
 
-### Los consentimientos se importan aparte, con su evidencia
+### Consents are imported separately, with their evidence
 
-Las fases no tocan `custom_acepta_promociones` ni
-`custom_consentimiento`: en cortec_helpdesk ≥ 1.0.12 esos campos se
-derivan del registro de consentimientos (`CORTEC Consent Record`), y
-bajo la Ley 8968 la carga de la prueba recae sobre el responsable de la
-base de datos.
+The phases do not touch `custom_acepta_promociones` or
+`custom_consentimiento`: in cortec_helpdesk ≥ 1.0.12 those fields are
+derived from the consent registry (`CORTEC Consent Record`), and under
+Costa Rica's Law 8968 the burden of proof lies with whoever is
+responsible for the database.
 
-La evidencia sí existe en Bitrix24: los «Acuerdos» de los formularios
-guardan un registro por envío con fecha, IP, URL y la actividad del CRM.
-La API REST no permite listarlo, así que se exporta a mano **después de
-la corrida real**, un CSV por acuerdo:
+The evidence does exist in Bitrix24: the forms' "Agreements" keep one
+record per submission with date, IP, URL and the CRM activity. The REST
+API cannot list them, so they are exported by hand **after the real
+run**, one CSV per agreement:
 
-1. Formularios del CRM → el formulario → **Acuerdos** → el acuerdo →
-   lista de consentimientos («Consentimiento del usuario»).
-2. **TODO** para ver todas las filas en una página, seleccionar la tabla
-   y pegarla en Excel.
-3. Guardar como CSV. Hacen falta las columnas Fecha, Dirección IP, Origen
-   y Dirección; el separador (`;`, `,` o tabulador) y la codificación dan
-   igual.
-4. Subir el CSV como File privado e importar, primero en seco:
+1. CRM forms → the form → **Agreements** (*Acuerdos*) → the agreement →
+   list of consents (*Consentimiento del usuario*).
+2. **ALL** (*TODO*) to show every row on one page, select the table and
+   paste it into Excel.
+3. Save as CSV. The columns *Fecha*, *Dirección IP*, *Origen* and
+   *Dirección* are required, with those Spanish headers; the separator
+   (`;`, `,` or tab) and the encoding do not matter.
+4. Upload the CSV as a private File and import it, dry run first:
 
 ```bash
-bench --site <sitio> execute cortec_bitrix24.api.import_webform_consents \
+bench --site <site> execute cortec_bitrix24.api.import_webform_consents \
   --kwargs "{'file_url': '/private/files/promociones.csv', 'agreement': 'promociones', 'dry_run': 1}"
 ```
 
-El informe dice cuántas filas se resolvieron por doctype y lista las
-actividades sin titular migrado. Con `dry_run: 0` se crean los
-registros con canal «Bitrix24». Repetir la importación no duplica nada.
-Para la Política de Privacidad se usa `'agreement': 'politica-privacidad'`.
+The report says how many rows were resolved per doctype and lists the
+activities whose subject was not migrated. With `dry_run: 0` the records
+are created with the channel "Bitrix24". Repeating the import duplicates
+nothing. For the Privacy Policy use `'agreement': 'politica-privacidad'`.
 
-Las fechas son la hora del portal.
+Dates are in the portal's time.
 
-#### Suscribir a la lista promocional
+#### Subscribing to the promotional list
 
-Para suscribir a quienes aceptaron el acuerdo «promociones»:
+To subscribe those who accepted the `promociones` agreement:
 
-1. **Primero, las bajas.** Si se enviaron campañas desde Bitrix24 (CRM
-   Marketing), exportar la lista de personas que se dieron de baja a un
-   CSV con una columna de correo («Correo», «E-mail» o «Email») y, si la
-   trae, «Fecha». Importarla:
+1. **Unsubscribes first.** If campaigns were sent from Bitrix24 (CRM
+   Marketing), export the list of people who unsubscribed to a CSV with
+   an email column (header *Correo*, *E-mail* or *Email*) and, if
+   available, *Fecha* (date). Import it:
 
    ```bash
-   bench --site <sitio> execute cortec_bitrix24.api.import_marketing_unsubscribes \
+   bench --site <site> execute cortec_bitrix24.api.import_marketing_unsubscribes \
      --kwargs "{'file_url': '/private/files/bajas.csv', 'dry_run': 1}"
    ```
 
-   Cada baja queda como revocación del consentimiento publicitario. Si
-   el CSV no trae fecha se usa la de la importación: la baja gana a
-   cualquier consentimiento anterior.
+   Each unsubscribe becomes a revocation of the promotional consent. If
+   the CSV has no date, the import date is used: the unsubscribe wins
+   over any earlier consent.
 
-2. **Después, los consentimientos con `'subscribe': 1`.**
+2. **Then the consents, with `'subscribe': 1`.**
 
-cortec_helpdesk decide por el **último evento** de cada correo:
+cortec_helpdesk decides by the **latest event** for each email:
 
-- solo suscribe si es un consentimiento otorgado;
-- un consentimiento histórico nunca reactiva a quien se dio de baja;
-- nadie con una baja global de correos del sitio se suscribe.
+- it only subscribes if that event is a granted consent;
+- a historical consent never reactivates someone who unsubscribed;
+- nobody with a site-wide email unsubscribe is subscribed.
 
-El informe cuenta los suscritos, los que no por una baja posterior y los
-que no tienen correo. Dar de alta en la lista **no envía ningún correo**.
+The report counts those subscribed, those left out because of a later
+unsubscribe, and those with no email. Adding someone to the list
+**sends no email**.
 
-### Los documentos suprimidos no se reescriben
+### Suppressed documents are not rewritten
 
-Si un titular pidió la supresión de sus datos (cortec_helpdesk ≥ 1.0.13),
-sus documentos quedan en `CORTEC Suppressed Document`. `idmap.upsert`
-no actualiza esos documentos ni crea notas, correos o adjuntos colgados
-de ellos, y la importación de consentimientos los omite. Queda un aviso
-en el log de la corrida.
+If a data subject requested the erasure of their data
+(cortec_helpdesk ≥ 1.0.13), their documents are listed in
+`CORTEC Suppressed Document`. `idmap.upsert` does not update those
+documents or create notes, emails or attachments hanging from them, and
+the consent import skips them. A notice is left in the run log.
 
-Lo que no se puede evitar desde aquí es que el titular siga en el portal
-de Bitrix24 mientras esté activo: hay que borrarlo también allí.
+What cannot be prevented from here is the data subject remaining in the
+Bitrix24 portal while it is still active: they must be deleted there
+too.
 
-### `custom_account_manager` sí se rellena
+### `custom_account_manager` is filled in
 
-El responsable de cada contacto en Bitrix24 se escribe en
-`Contact.custom_account_manager` si `cortec_helpdesk` está instalado.
-Es lo que hace que su asignación automática de tickets funcione desde el
-primer correo que entre tras el corte.
+The owner of each contact in Bitrix24 is written to
+`Contact.custom_account_manager` if `cortec_helpdesk` is installed.
+That is what makes its automatic ticket assignment work from the first
+email that arrives after the cutover.
 
-### Las dos cosas que Bitrix24 llama «tarea»
+### The two things Bitrix24 calls a "task"
 
-Son colecciones distintas y se migran en fases distintas, ambas a
-`CRM Task`:
+They are different collections and are migrated in different phases,
+both to `CRM Task`:
 
-- **To-dos del timeline del CRM** (`crm.activity.list` con `PROVIDER_ID`
-  `CRM_TODO`, `TASK` o `CRM_REMINDER`) — fase 8. Siempre cuelgan de un
-  Lead, Deal, Contacto o Empresa.
-- **Módulo Tareas y proyectos** (`tasks.task.list`) — fase 9. Se migran
-  **todas** las tareas del portal, también las internas sin relación con
-  el CRM, que quedan sin referencia (en `CRM Task` solo `title` es
-  obligatorio).
+- **To-dos from the CRM timeline** (`crm.activity.list` with
+  `PROVIDER_ID` `CRM_TODO`, `TASK` or `CRM_REMINDER`) — phase 8. They
+  always hang from a Lead, Deal, Contact or Company.
+- **Tasks and Projects module** (`tasks.task.list`) — phase 9. **All**
+  the portal's tasks are migrated, including internal ones unrelated to
+  the CRM, which are left without a reference (in `CRM Task` only
+  `title` is mandatory).
 
-Cuidado con las **prioridades**: son dos escalas distintas en el mismo
-portal. Las actividades del CRM usan 1/2/3 y las tareas 0/1/2. Aplicar
-una a la otra desplaza todas las prioridades un escalón; hay un test que
-lo vigila.
+Beware of **priorities**: they are two different scales in the same
+portal. CRM activities use 1/2/3 and tasks use 0/1/2. Applying one to
+the other shifts every priority by one step; a test guards against it.
 
-El estado 4 de Bitrix24 («supuestamente completada»: el ejecutor la
-cerró y falta que el creador la acepte) se migra como `Done`. En un
-portal que se va a retirar nadie va a aceptar ya nada, y dejarla
-`In Progress` mostraría como pendiente lo que está hecho.
+Bitrix24 status 4 ("supposedly completed": the assignee closed it and
+the creator has yet to accept it) is migrated as `Done`. In a portal
+that is being retired nobody will accept anything any more, and leaving
+it `In Progress` would show finished work as pending.
 
-### Lo que no cabe en CRM Task
+### What does not fit in CRM Task
 
-`CRM Task` tiene ocho campos y una tarea de Bitrix24 tiene muchos más.
-Sin inventar Custom Fields, lo que no tiene hueco propio se escribe como
-una cabecera dentro de `description`, que es un Text Editor: proyecto,
-creador, co-ejecutores, observadores, tiempo estimado e invertido, el
-checklist como lista de casillas y los comentarios.
+`CRM Task` has eight fields and a Bitrix24 task has many more. Without
+inventing Custom Fields, whatever has no slot of its own is written as a
+header inside `description`, which is a Text Editor: project, creator,
+co-assignees, observers, estimated and spent time, the checklist as a
+list of checkboxes, and the comments.
 
-No se migran dependencias entre tareas, sprints, plantillas ni historial
-de cambios. Una tarea archivada no necesita sus dependencias: ya no se
-va a replanificar nada.
+Task dependencies, sprints, templates and change history are not
+migrated. An archived task does not need its dependencies: nothing is
+going to be replanned.
 
-**Los comentarios pueden no llegar.** `task.commentitem.getlist` está
-descontinuado desde `tasks 25.700.0` y no funciona con la ficha nueva de
-tarea. La fase lo intenta igual y, si el portal ya no lo expone, lo
-anota en el informe de la corrida — precisamente para que unas tareas
-sin comentarios no se confundan con tareas que nunca los tuvieron.
-Recuperarlos exigiría leer el chat de cada tarea con
-`im.dialog.messages.get`, que es otra fase entera.
+**Comments may not make it.** `task.commentitem.getlist` has been
+deprecated since `tasks 25.700.0` and does not work with the new task
+card. The phase tries anyway and, if the portal no longer exposes it,
+records that in the run report — precisely so that tasks without
+comments are not mistaken for tasks that never had any. Recovering them
+would require reading each task's chat with `im.dialog.messages.get`,
+which is a whole phase of its own.
 
-### El importe de los leads
+### The amount on leads
 
-En Bitrix24 un lead tiene importe (`OPPORTUNITY`); en Frappe CRM el
-CRM Lead no tiene campo de valor. Se anota dentro de
-`custom_comentarios` en vez de forzarlo dentro de `annual_revenue`, que
-significa la facturación anual de la empresa y falsearía los informes.
+In Bitrix24 a lead has an amount (`OPPORTUNITY`); in Frappe CRM the CRM
+Lead has no value field. It is written inside `custom_comentarios`
+rather than forced into `annual_revenue`, which means the company's
+yearly turnover and would distort reports.
 
-### Etapas en curso → `Open`, no `Ongoing`
+### In-progress stages → `Open`, not `Ongoing`
 
-`cortec_helpdesk` compara el tipo de estado con la cadena exacta
-`"Open"`. Una etapa marcada `Ongoing` haría que un WhatsApp entrante se
-tomara como no atendido y generara un Lead duplicado.
+`cortec_helpdesk` compares the status type against the exact string
+`"Open"`. A stage marked `Ongoing` would make an inbound WhatsApp count
+as unattended and create a duplicate Lead.
 
-## Diagnóstico
+## Troubleshooting
 
-### Seguir una corrida
+### Following a run
 
 ```python
 import frappe
 frappe.call("cortec_bitrix24.api.migration_status")
 ```
 
-### Ver los errores de la última corrida
+### Seeing the errors of the last run
 
 ```python
 import frappe
@@ -381,7 +387,7 @@ frappe.get_all("Bitrix24 Migration Log",
     order_by="creation desc", limit=20)
 ```
 
-### Comprobar la correspondencia de un registro concreto
+### Checking the mapping of a specific record
 
 ```python
 import frappe
@@ -391,7 +397,7 @@ print(idmap.get_target(idmap.ENTITY_LEAD, "1234"))     # ('CRM Lead', 'CRM-LEAD-
 print(idmap.get_target(idmap.ENTITY_DEAL, "987"))
 ```
 
-### Usuarios y etapas sin resolver
+### Unresolved users and stages
 
 ```python
 import frappe
@@ -405,12 +411,12 @@ print(frappe.get_all("Bitrix24 Status Map",
     fields=["entity", "bitrix_status_id", "bitrix_label"]))
 ```
 
-### Rehacer una fase
+### Redoing a phase
 
-Borrar su entrada del campo *Cursores* del `Bitrix24 Migration Run` y
-relanzar. Para rehacer una entidad **desde cero**, borrar además sus
-filas del ID Map — lo que hará que la siguiente pasada cree documentos
-nuevos, no que actualice los existentes:
+Delete its entry from the *Cursores* field of the `Bitrix24 Migration
+Run` and relaunch. To redo an entity **from scratch**, also delete its
+rows from the ID Map — which makes the next pass create new documents
+rather than update the existing ones:
 
 ```python
 import frappe
@@ -421,22 +427,22 @@ frappe.db.commit()
 ## Tests
 
 ```bash
-bench --site sitio.dominio.com run-tests --app cortec_bitrix24
+bench --site site.domain.com run-tests --app cortec_bitrix24
 ```
 
-Cubren lo que falla en silencio: la paginación por ID del cliente (un
-cursor que no avanza da un bucle infinito; uno que salta pierde
-registros), la serialización de los comandos de `batch`, que el token
-del webhook nunca salga en un log, y la normalización de teléfonos —de
-la que depende que el mismo cliente no acabe siendo tres contactos—, y
-que la corrida no notifique a nadie: el silenciado se aplica y se
-restaura, y una corrida real se aborta si falta algo por silenciar.
+They cover what fails silently: the client's ID pagination (a cursor
+that does not advance loops forever; one that skips loses records), the
+serialization of `batch` commands, the webhook token never showing up in
+a log, phone normalization — which is what keeps the same customer from
+ending up as three contacts — and the run not notifying anyone: the
+silencing is applied and restored, and a real run aborts if anything is
+left unsilenced.
 
-## Notas
+## Notes
 
-- No modifica doctypes existentes de Frappe, CRM, Helpdesk ni ERPNext.
-- No declara `erpnext` como dependencia (GPL-3.0) para no mezclarlo con
-  AGPL-3.0, igual que `cortec_helpdesk`.
-- Compatible con Frappe v15/v16 y Frappe CRM v2.x.
-- No requiere ERPNext: las tareas van a `CRM Task` de Frappe CRM, y no a
-  los doctypes `Task`/`Project` de ERPNext (GPL-3.0).
+- It does not modify existing Frappe, CRM, Helpdesk or ERPNext doctypes.
+- It does not declare `erpnext` as a dependency (GPL-3.0) so as not to
+  mix it with AGPL-3.0, same as `cortec_helpdesk`.
+- Compatible with Frappe v15/v16 and Frappe CRM v2.x.
+- It does not require ERPNext: tasks go to Frappe CRM's `CRM Task`, not
+  to ERPNext's `Task`/`Project` doctypes (GPL-3.0).
