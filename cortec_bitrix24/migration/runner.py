@@ -99,13 +99,12 @@ class MigrationContext:
     def checkpoint(self) -> None:
         """Persiste contadores y cursores, y cierra la transacción."""
         self._since_commit = 0
-        if self.dry_run:
-            # En seco no hay nada que confirmar, pero sí conviene
-            # refrescar los contadores para poder seguir el avance.
-            self._flush_run()
-            return
-
         self._flush_run()
+        # También en seco: las fases no escriben nada en el CRM, pero el
+        # avance y el log de la corrida solo se ven desde fuera si se
+        # confirman. Sin esto, una corrida en seco atascada muestra
+        # «Running» sin fase ni incidencias, y al detenerla se pierde
+        # todo lo que había anotado.
         frappe.db.commit()
 
     def _flush_run(self) -> None:

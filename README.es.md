@@ -373,6 +373,21 @@ import frappe
 frappe.call("cortec_bitrix24.api.migration_status")
 ```
 
+### Detener una corrida
+
+1. Parar el job: **Trabajo RQ** (`/app/rq-job`) → el job
+   `bitrix24-migration-<corrida>` → **Stop Job**. O reiniciar el worker
+   de la cola `long`.
+2. Marcar la corrida como abortada, para poder lanzar otra:
+
+```bash
+bench --site <sitio> execute cortec_bitrix24.api.abort_migration
+```
+
+Sin argumentos aborta la que esté en cola o en curso. Marcarla no
+detiene el job: por eso el paso 1 va primero. Una corrida real detenida
+se reanuda donde quedó; una en seco no deja nada escrito en el CRM.
+
 ### Ver los errores de la última corrida
 
 ```python

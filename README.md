@@ -377,6 +377,22 @@ import frappe
 frappe.call("cortec_bitrix24.api.migration_status")
 ```
 
+### Stopping a run
+
+1. Stop the job: **RQ Job** (`/app/rq-job`) → the
+   `bitrix24-migration-<run>` job → **Stop Job**. Or restart the `long`
+   queue worker.
+2. Mark the run as aborted, so another one can be launched:
+
+```bash
+bench --site <site> execute cortec_bitrix24.api.abort_migration
+```
+
+With no arguments it aborts whichever run is queued or running. Marking
+it does not stop the job, which is why step 1 comes first. A stopped
+real run resumes where it left off; a dry run leaves nothing written in
+the CRM.
+
 ### Seeing the errors of the last run
 
 ```python

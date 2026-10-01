@@ -33,7 +33,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint
+from frappe.utils import cint, now_datetime
 
 # Los jobs de la cola `long` no tienen el límite de tiempo de `default`.
 # Una migración de decenas de miles de registros contra un portal que
@@ -295,18 +295,36 @@ def abort_migration(run: str | None = None) -> dict:
 
     No mata el job: solo deja el Run en un estado coherente para que se
     pueda lanzar otro. Si el worker sigue vivo, pare primero el job
-    desde la cola (`bench --site <sitio> doctor` / RQ dashboard) y
-    después llame a esto.
+    (Trabajo RQ → «Stop Job», o reiniciando el worker de la cola
+    `long`) y después llame a esto.
+
+    Sin `run`, aborta la corrida que esté en cola o en curso.
+    `last_run` no sirve para eso: solo se escribe cuando una corrida
+    termina, que es justo lo que no ha pasado con la que hay que
+    abortar.
     """
     frappe.only_for("System Manager")
 
     if not run:
-        run = frappe.db.get_single_value("Bitrix24 Migration Settings", "last_run")
+        run = frappe.db.get_value(
+            "Bitrix24 Migration Run",
+            {"status": ["in", ("Queued", "Running")]},
+            "name",
+            order_by="creation desc",
+        )
 
     if not run:
-        frappe.throw(_("No hay ninguna corrida que abortar."))
+        frappe.throw(_("No hay ninguna corrida en cola ni en curso que abortar."))
 
-    frappe.db.set_value("Bitrix24 Migration Run", run, "status", "Aborted")
+    if not frappe.db.exists("Bitrix24 Migration Run", run):
+        frappe.throw(_("No existe la corrida {0}.").format(run))
+
+    frappe.db.set_value(
+        "Bitrix24 Migration Run",
+        run,
+        {"status": "Aborted", "finished_on": now_datetime(), "current_phase": ""},
+    )
+    frappe.db.commit()
     return {"run": run, "status": "Aborted"}
 
 

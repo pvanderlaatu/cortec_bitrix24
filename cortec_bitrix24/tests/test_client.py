@@ -126,6 +126,28 @@ class TestListAll(unittest.TestCase):
         self.assertTrue(any("paginación" in a for a in avisos))
 
 
+class TestListAllCursorAtascado(unittest.TestCase):
+    def test_si_el_portal_ignora_el_filtro_se_detiene(self):
+        # Un método que no respeta `>ID` devuelve siempre la misma
+        # página: sin este corte la corrida gira durante horas.
+        avisos = []
+        client = B24Client(WEBHOOK, throttle=0, logger=lambda l, m: avisos.append(m))
+        pagina = [{"ID": str(i)} for i in range(1, PAGE_SIZE + 1)]
+        llamadas = []
+
+        def fake_call(method, params=None):
+            llamadas.append(params)
+            return pagina
+
+        client.call = fake_call
+
+        obtenidos = list(client.list_all("crm.lead.list"))
+
+        self.assertEqual(len(llamadas), 2)
+        self.assertEqual(len(obtenidos), PAGE_SIZE, "la página repetida no se entrega")
+        self.assertTrue(any("no avanza" in a for a in avisos))
+
+
 class TestListAllCamelCase(unittest.TestCase):
     """
     tasks.task.list filtra por `ID` en mayúsculas y devuelve `id` en

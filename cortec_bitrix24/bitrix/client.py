@@ -234,6 +234,19 @@ class B24Client:
             if not rows:
                 return
 
+            page_last = rows[-1].get(row_id_field)
+            if page_last is not None and int(page_last) <= last_id:
+                # El portal ignoró el filtro `>ID` o el orden: esta
+                # página ya se entregó, y la siguiente sería la misma
+                # una y otra vez.
+                self._log(
+                    "error",
+                    f"{method}: el cursor no avanza (último {row_id_field}="
+                    f"{page_last}, cursor {last_id}); se interrumpe la "
+                    "paginación. Puede que falten registros de esta colección.",
+                )
+                return
+
             for row in rows:
                 yield row
 
