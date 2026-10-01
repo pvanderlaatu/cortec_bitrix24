@@ -78,7 +78,20 @@ opcionales y se detectan en tiempo de ejecución.
 ### 1. Webhook entrante en Bitrix24
 
 En el portal: **Recursos para desarrolladores → Otros → Webhook entrante**.
-Marcar los permisos **CRM**, **Usuarios**, **Disco** y **Canales abiertos**.
+Marcar los permisos:
+
+| Permiso | Lo necesita |
+| --- | --- |
+| **CRM** (`crm`) | Leads, negociaciones, contactos, empresas, actividades, formularios |
+| **Usuarios** (`user`) | Mapeo de responsables |
+| **Drive** (`disk`) | Adjuntos |
+| **Canales abiertos** (`imopenlines`) | Conversaciones de WhatsApp |
+| **Chat y notificaciones** (`im`) | Los mensajes de esas conversaciones |
+| **Tareas** (`task`) | Módulo Tareas y proyectos (fase 9) |
+| **Grupos de trabajo** (`sonet_group`) | Proyecto de cada tarea |
+
+Sin un permiso, la fase que lo usa falla o queda vacía; el resto sigue.
+
 Copiar la URL, que tiene esta forma:
 
 ```

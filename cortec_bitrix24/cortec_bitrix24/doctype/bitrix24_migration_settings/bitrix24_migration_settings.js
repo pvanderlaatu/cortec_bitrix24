@@ -33,7 +33,17 @@ frappe.ui.form.on("Bitrix24 Migration Settings", {
 	},
 });
 
-function probar_conexion(frm) {
+async function probar_conexion(frm) {
+	// La prueba usa lo guardado, no lo que hay en pantalla: sin esto,
+	// pegar la URL y probar sin guardar da «no hay webhook configurado».
+	if (frm.is_dirty()) {
+		try {
+			await frm.save();
+		} catch (e) {
+			return;
+		}
+	}
+
 	frappe.dom.freeze(__("Consultando el portal…"));
 	frappe
 		.call(

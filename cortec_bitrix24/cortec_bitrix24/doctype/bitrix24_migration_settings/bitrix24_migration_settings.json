@@ -58,7 +58,7 @@
    "fieldtype": "Password",
    "label": "URL del webhook entrante",
    "reqd": 1,
-   "description": "Bitrix24 → Recursos para desarrolladores → Otros → Webhook entrante. Debe tener permiso sobre CRM, Usuarios, Disco y Open Channels. Formato: https://portal.bitrix24.es/rest/1/token/"
+   "description": "Bitrix24 → Recursos para desarrolladores → Otros → Webhook entrante. Debe tener permiso sobre CRM, Usuarios, Drive, Canales Abiertos, Chat y notificaciones (im), Tareas (task) y Grupos de trabajo (sonet_group). Guarde el formulario antes de probar la conexión. Formato: https://portal.bitrix24.es/rest/1/token/"
   },
   {
    "fieldname": "conexion_cb",

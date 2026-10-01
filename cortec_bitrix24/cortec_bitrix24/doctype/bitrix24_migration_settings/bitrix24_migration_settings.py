@@ -111,8 +111,24 @@ def test_connection() -> dict:
     from cortec_bitrix24.bitrix.client import get_client
     from cortec_bitrix24.bitrix.errors import B24Error
 
-    client = get_client()
-    profile = client.profile()
+    try:
+        client = get_client()
+        profile = client.profile()
+    except B24Error as e:
+        # Un mensaje, no un traceback: es un problema de configuración
+        # que resuelve quien está delante del formulario.
+        if e.code == "NO_WEBHOOK":
+            frappe.throw(
+                _(
+                    "No hay ninguna URL de webhook guardada. Péguela en «URL del "
+                    "webhook entrante» y guarde el formulario antes de probar."
+                ),
+                title=_("Falta el webhook"),
+            )
+        frappe.throw(
+            _("Bitrix24 rechazó la conexión: {0}").format(str(e)),
+            title=_("No se pudo conectar con Bitrix24"),
+        )
 
     counts = {}
     for label, method in (
