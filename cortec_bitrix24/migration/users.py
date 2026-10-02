@@ -33,7 +33,7 @@ caen al usuario de respaldo configurado.
 
 import frappe
 
-from cortec_bitrix24.utils import is_truthy
+from cortec_bitrix24.utils import clear_local_cache, is_truthy, local_cache
 
 # Caché por corrida: resolve_user() se llama una vez por cada lead,
 # deal, actividad y mensaje. Sin caché serían cientos de miles de
@@ -189,7 +189,7 @@ def resolve_user(ctx, bitrix_user_id, fallback: str | None = None) -> str | None
     if not bitrix_user_id:
         return fallback
 
-    cache = frappe.local.__dict__.setdefault(_CACHE_KEY, {})
+    cache = local_cache(_CACHE_KEY)
     key = str(bitrix_user_id)
 
     if key not in cache:
@@ -204,4 +204,4 @@ def resolve_owner(ctx, bitrix_user_id) -> str | None:
 
 
 def _clear_cache() -> None:
-    frappe.local.__dict__.pop(_CACHE_KEY, None)
+    clear_local_cache(_CACHE_KEY)

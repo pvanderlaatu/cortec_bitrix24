@@ -46,7 +46,9 @@ import frappe
 from cortec_bitrix24.utils import (
     as_float,
     as_int,
+    clear_local_cache,
     is_truthy,
+    local_cache,
     parse_date_str,
     parse_datetime_str,
 )
@@ -275,7 +277,7 @@ _CACHE_KEY = "_b24_fieldmap_cache"
 
 def get_field_map(entity: str) -> list[dict]:
     """Filas activas del mapa para una entidad, cacheadas por corrida."""
-    cache = frappe.local.__dict__.setdefault(_CACHE_KEY, {})
+    cache = local_cache(_CACHE_KEY)
 
     if entity not in cache:
         cache[entity] = frappe.get_all(
@@ -409,4 +411,4 @@ def _fieldname(uf_code: str) -> str:
 
 
 def _clear_cache() -> None:
-    frappe.local.__dict__.pop(_CACHE_KEY, None)
+    clear_local_cache(_CACHE_KEY)

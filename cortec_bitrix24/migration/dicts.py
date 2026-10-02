@@ -44,7 +44,7 @@ el mapa es editable.
 
 import frappe
 
-from cortec_bitrix24.utils import as_int
+from cortec_bitrix24.utils import as_int, local_cache
 
 # ENTITY_ID de crm.status.list → cómo tratarlo.
 LEAD_STATUS_ENTITY = "STATUS"
@@ -385,7 +385,7 @@ def resolve_catalog(ctx, entity_id: str, code, doctype: str) -> str | None:
     if not code:
         return None
 
-    cache = frappe.local.__dict__.setdefault(_CATALOG_CACHE_KEY, {})
+    cache = local_cache(_CATALOG_CACHE_KEY)
 
     if entity_id not in cache:
         try:

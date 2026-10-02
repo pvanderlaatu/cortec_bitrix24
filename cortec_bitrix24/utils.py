@@ -30,6 +30,7 @@ sea la parte de la migración más fácil de cubrir con tests.
 import re
 from datetime import datetime, timezone
 
+import frappe
 from frappe.utils import get_datetime, now_datetime
 
 # Prefijo internacional por defecto para números sin código de país.
@@ -290,3 +291,23 @@ def is_truthy(value) -> bool:
     if value is None:
         return False
     return str(value).strip().upper() in ("Y", "1", "TRUE", "YES")
+
+
+def local_cache(key: str) -> dict:
+    """
+    Diccionario que vive lo que dura el job o la petición, guardado en
+    `frappe.local`.
+
+    Con getattr/setattr y no con `frappe.local.__dict__`: en Frappe v16
+    `frappe.local` guarda sus atributos en un ContextVar y ya no tiene
+    `__dict__`, así que el acceso directo lanza AttributeError.
+    """
+    cache = getattr(frappe.local, key, None)
+    if cache is None:
+        cache = {}
+        setattr(frappe.local, key, cache)
+    return cache
+
+
+def clear_local_cache(key: str) -> None:
+    setattr(frappe.local, key, None)
