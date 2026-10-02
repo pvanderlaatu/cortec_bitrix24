@@ -97,18 +97,25 @@ def _fetch_all_users(ctx) -> list[dict]:
     miles: el coste es irrelevante.
     """
     users: list[dict] = []
+    seen: set[str] = set()
     start = 0
 
     while True:
         raw = ctx.client.call_raw("user.get", {"start": start, "ADMIN_MODE": True})
         page = raw.get("result") or []
-        if not page:
+
+        # Si el portal repite la página (ignora `start`), parar: sin
+        # esto el bucle no terminaría, como pasó con crm.status.list.
+        new = [u for u in page if str(u.get("ID")) not in seen]
+        if not new:
             break
 
-        users.extend(page)
+        for user in new:
+            seen.add(str(user.get("ID")))
+        users.extend(new)
 
         next_start = raw.get("next")
-        if next_start is None:
+        if next_start is None or int(next_start) <= start:
             break
         start = int(next_start)
 

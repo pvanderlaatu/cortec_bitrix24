@@ -94,12 +94,17 @@ def start_migration(dry_run: int = 1, delta_since: str | None = None) -> dict:
     # inicial del botón.
     frappe.db.set_single_value("Bitrix24 Migration Settings", "dry_run", dry_run)
 
+    # Después del commit: si el worker tomara el job antes de que se
+    # confirme el Run, no lo encontraría. `job_id` (y no `job_name`,
+    # obsoleto en Frappe v16) deja el nombre de la corrida en el
+    # identificador del job, para encontrarlo en Trabajo RQ.
     frappe.enqueue(
         "cortec_bitrix24.migration.runner.run_migration",
         queue=QUEUE,
         timeout=JOB_TIMEOUT,
+        job_id=f"bitrix24-migration-{run.name}",
+        enqueue_after_commit=True,
         run_name=run.name,
-        job_name=f"bitrix24-migration-{run.name}",
     )
 
     return {"run": run.name, "mode": run.mode, "delta_since": run.delta_since}

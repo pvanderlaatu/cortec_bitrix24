@@ -120,7 +120,8 @@ coteja la migración al terminar.
 
 ### 3. Corrida en seco
 
-**Migrar → Corrida en seco.** No escribe nada; produce un
+**Migrar → Corrida en seco.** Las corridas se lanzan siempre desde ese
+menú: es el que encola el job. No escribe nada; produce un
 `Bitrix24 Migration Run` cuyo campo *Informe* trae:
 
 - conteos previstos por entidad,
@@ -375,9 +376,9 @@ frappe.call("cortec_bitrix24.api.migration_status")
 
 ### Detener una corrida
 
-1. Parar el job: **Trabajo RQ** (`/app/rq-job`) → el job
-   `bitrix24-migration-<corrida>` → **Stop Job**. O reiniciar el worker
-   de la cola `long`.
+1. Parar el job: **Trabajo RQ** (`/app/rq-job`) → filtrar el
+   *Identificador* por `bitrix24-migration-<corrida>` → **Stop Job**. O
+   reiniciar el worker de la cola `long`.
 2. Marcar la corrida como abortada, para poder lanzar otra:
 
 ```bash

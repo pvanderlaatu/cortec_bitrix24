@@ -125,7 +125,8 @@ it finishes.
 
 ### 3. Dry run
 
-**Migrar → Corrida en seco.** It writes nothing; it produces a
+**Migrar → Corrida en seco.** Runs are always launched from that menu:
+it is what queues the job. It writes nothing; it produces a
 `Bitrix24 Migration Run` whose *Informe* (report) field contains:
 
 - expected counts per entity,
@@ -379,8 +380,8 @@ frappe.call("cortec_bitrix24.api.migration_status")
 
 ### Stopping a run
 
-1. Stop the job: **RQ Job** (`/app/rq-job`) → the
-   `bitrix24-migration-<run>` job → **Stop Job**. Or restart the `long`
+1. Stop the job: **RQ Job** (`/app/rq-job`) → filter *ID* by
+   `bitrix24-migration-<run>` → **Stop Job**. Or restart the `long`
    queue worker.
 2. Mark the run as aborted, so another one can be launched:
 

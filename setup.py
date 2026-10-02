@@ -18,7 +18,7 @@ with open("requirements.txt") as f:
 
 setup(
     name="cortec_bitrix24",
-    version="1.1.2",
+    version="1.1.3",
     description="Migración de Bitrix24 a Frappe CRM para CORTEC",
     author="Corporación de Tecnología CORTEC S.R.L.",
     author_email="soporte@tecnocr.net",

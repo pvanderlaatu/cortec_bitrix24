@@ -75,18 +75,7 @@ def run(ctx) -> None:
     categories = _fetch_deal_categories(ctx)
     ctx.note("embudos", {str(k): v for k, v in categories.items()})
 
-    statuses = ctx.client.call("crm.status.list", {"start": 0}) or []
-
-    # crm.status.list pagina de 50 en 50 como cualquier *.list, pero no
-    # admite el filtro >ID del modo rápido. Como son pocas filas (unas
-    # decenas), se recorren con el offset clásico.
-    offset = 50
-    while len(statuses) >= offset:
-        page = ctx.client.call("crm.status.list", {"start": offset}) or []
-        if not page:
-            break
-        statuses.extend(page)
-        offset += 50
+    statuses = fetch_all_statuses(ctx.client)
 
     buckets = {"lead_status": 0, "deal_status": 0, "source": 0, "industry": 0}
 
@@ -108,6 +97,45 @@ def run(ctx) -> None:
 
     ctx.note("catalogos", buckets)
     ctx.checkpoint()
+
+
+def fetch_all_statuses(client) -> list[dict]:
+    """
+    Todas las filas de crm.status.list, sin repetir.
+
+    El método no admite el filtro `>ID`, y según el portal pagina con
+    `start`/`next` o devuelve la lista entera en cada llamada ignorando
+    `start`. Antes se pedía la página siguiente mientras la lista
+    acumulada tuviera 50 filas o más: en un portal con más de 50 estados
+    que ignora `start`, cada vuelta volvía a añadir la lista entera y el
+    bucle no terminaba nunca (la corrida en seco se quedaba horas en
+    «Diccionarios»).
+
+    Ahora se sigue `next` mientras traiga filas nuevas, y se para en
+    cuanto una página no aporta ninguna.
+    """
+    rows: list[dict] = []
+    seen: set[str] = set()
+    start = 0
+
+    while True:
+        raw = client.call_raw("crm.status.list", {"start": start}) or {}
+        page = raw.get("result") or []
+
+        new = [r for r in page if str(r.get("ID")) not in seen]
+        if not new:
+            break
+
+        for row in new:
+            seen.add(str(row.get("ID")))
+        rows.extend(new)
+
+        next_start = raw.get("next")
+        if next_start is None or int(next_start) <= start:
+            break
+        start = int(next_start)
+
+    return rows
 
 
 # ---------------------------------------------------------------------------
