@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import unittest
 
-from cortec_bitrix24.migration.dicts import fetch_all_statuses
+from cortec_bitrix24.migration.dicts import fetch_all_statuses, propose_targets
 
 ESTADOS = [{"ID": str(i), "ENTITY_ID": "STATUS"} for i in range(1, 121)]
 
@@ -93,3 +93,92 @@ class TestEstadosDelPortal(unittest.TestCase):
                 return {"result": []}
 
         self.assertEqual(fetch_all_statuses(Vacio()), [])
+
+
+# Estados que trae Frappe CRM de serie, en orden de posición.
+LEAD_CRM = [
+    {"name": "New", "type": "Open"},
+    {"name": "Contacted", "type": "Ongoing"},
+    {"name": "Nurture", "type": "Ongoing"},
+    {"name": "Qualified", "type": "Won"},
+    {"name": "Unqualified", "type": "Lost"},
+    {"name": "Junk", "type": "Lost"},
+]
+DEAL_CRM = [
+    {"name": "Qualification", "type": "Open"},
+    {"name": "Demo/Making", "type": "Ongoing"},
+    {"name": "Proposal/Quotation", "type": "Ongoing"},
+    {"name": "Negotiation", "type": "Ongoing"},
+    {"name": "Ready to Close", "type": "Ongoing"},
+    {"name": "Won", "type": "Won"},
+    {"name": "Lost", "type": "Lost"},
+]
+
+
+def etapa(status_id, nombre, sort, semantics=""):
+    return {"STATUS_ID": status_id, "NAME": nombre, "SORT": sort, "SEMANTICS": semantics}
+
+
+class TestProponerEstados(unittest.TestCase):
+    """Etapas reales del portal tecnocr.bitrix24.com."""
+
+    def test_etapas_de_leads(self):
+        etapas = [
+            etapa("NEW", "Unassigned", 10),
+            etapa("IN_PROCESS", "In Progress", 20),
+            etapa("PROCESSED", "Processed", 30),
+            etapa("CONVERTED", "Good lead", 40, "S"),
+            etapa("JUNK", "Junk Lead", 50, "F"),
+        ]
+        self.assertEqual(
+            propose_targets(etapas, LEAD_CRM),
+            {
+                "NEW": "New",
+                "IN_PROCESS": "Contacted",
+                "PROCESSED": "Nurture",
+                "CONVERTED": "Qualified",
+                "JUNK": "Junk",
+            },
+        )
+
+    def test_etapas_de_negociaciones(self):
+        etapas = [
+            etapa("NEW", "New", 10),
+            etapa("PREPARATION", "Create papers", 20),
+            etapa("PREPAYMENT_INVOICE", "Invoice", 30),
+            etapa("EXECUTING", "In progress", 40),
+            etapa("FINAL_INVOICE", "Final invoice", 50),
+            etapa("WON", "Deal won", 60, "S"),
+            etapa("LOSE", "Deal lost", 70, "F"),
+            etapa("APOLOGY", "Analyze failure", 80, "F"),
+        ]
+        self.assertEqual(
+            propose_targets(etapas, DEAL_CRM),
+            {
+                "NEW": "Qualification",
+                "PREPARATION": "Demo/Making",
+                "PREPAYMENT_INVOICE": "Proposal/Quotation",
+                "EXECUTING": "Negotiation",
+                "FINAL_INVOICE": "Ready to Close",
+                "WON": "Won",
+                "LOSE": "Lost",
+                "APOLOGY": "Lost",
+            },
+        )
+
+    def test_mas_etapas_que_estados_respeta_el_orden(self):
+        etapas = [etapa(f"S{i}", f"Etapa {i}", i * 10) for i in range(6)]
+        destinos = list(propose_targets(etapas, LEAD_CRM).values())
+        orden = [e["name"] for e in LEAD_CRM]
+        indices = [orden.index(d) for d in destinos]
+        self.assertEqual(indices, sorted(indices), "una etapa posterior no puede ir a un estado anterior")
+        self.assertEqual(destinos[0], "New")
+        self.assertEqual(destinos[-1], "Nurture")
+
+    def test_ganada_sin_estado_won_va_al_ultimo_en_curso(self):
+        sin_won = [e for e in LEAD_CRM if e["type"] != "Won"]
+        destino = propose_targets([etapa("CONVERTED", "Good lead", 10, "S")], sin_won)
+        self.assertEqual(destino["CONVERTED"], "Nurture")
+
+    def test_sin_estados_en_frappe_queda_sin_asignar(self):
+        self.assertEqual(propose_targets([etapa("NEW", "Nuevo", 10)], []), {"NEW": None})

@@ -155,3 +155,12 @@ class TestAvisosDeCortecHelpdesk(unittest.TestCase):
             }
             <= silenciados
         )
+
+
+class TestFasesOpcionales(unittest.TestCase):
+    def test_un_permiso_que_falta_no_tumba_el_crm(self):
+        # Las fases que dependen de un permiso distinto del CRM se
+        # omiten; las del CRM no pueden omitirse.
+        self.assertTrue({"users", "tasks", "openlines", "files", "webforms"} <= runner.OPTIONAL_PHASES)
+        for fase in ("dicts", "userfields", "companies", "contacts", "leads", "deals", "activities"):
+            self.assertNotIn(fase, runner.OPTIONAL_PHASES)

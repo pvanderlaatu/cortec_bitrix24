@@ -45,7 +45,7 @@ import frappe
 from frappe.utils import now_datetime
 
 from cortec_bitrix24.bitrix.client import get_client
-from cortec_bitrix24.bitrix.errors import B24FatalError
+from cortec_bitrix24.bitrix.errors import B24AuthError, B24FatalError
 from cortec_bitrix24.cortec_bitrix24.doctype.bitrix24_migration_settings.bitrix24_migration_settings import (
     get_settings,
 )
@@ -264,7 +264,17 @@ def run_migration(run_name: str) -> None:
                 module = importlib.import_module(
                     f"cortec_bitrix24.migration.{module_name}"
                 )
-                module.run(ctx)
+                try:
+                    module.run(ctx)
+                except B24AuthError as e:
+                    # Un permiso del webhook que solo usa esta fase no
+                    # debe tumbar la corrida entera. El CRM sí.
+                    if key not in OPTIONAL_PHASES:
+                        raise
+                    ctx.log("error", f"Fase '{label}' omitida: {e}")
+                    ctx.summary.setdefault("fases_omitidas", {})[key] = str(e)
+                    ctx.checkpoint()
+                    continue
 
                 ctx.mark_phase_done()
                 ctx.checkpoint()
@@ -342,6 +352,10 @@ def migration_flags():
         frappe.flags.in_bitrix24_migration = previous_migration
         frappe.flags.in_import = previous_import
 
+
+# Fases que dependen de un permiso del webhook distinto del CRM. Si el
+# portal la rechaza por permisos, se omite y la corrida sigue.
+OPTIONAL_PHASES = {"users", "tasks", "openlines", "files", "webforms"}
 
 # Campos de CORTEC Helpdesk Settings que se apagan durante la corrida.
 CORTEC_ALERT_FIELDS = ("telegram_enabled", "browser_alerts_enabled", "raven_enabled")

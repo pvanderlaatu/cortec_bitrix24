@@ -18,6 +18,7 @@
   "dry_run",
   "silence_cortec_alerts",
   "preserve_timestamps",
+  "status_strategy",
   "corrida_cb",
   "default_owner",
   "country_code",
@@ -116,6 +117,14 @@
    "label": "Conservar fechas originales de Bitrix24",
    "default": "1",
    "description": "Reescribe creation/modified con las fechas del portal, para que el historial quede en orden cronológico real."
+  },
+  {
+   "fieldname": "status_strategy",
+   "fieldtype": "Select",
+   "label": "Etapas de Bitrix24",
+   "options": "Asignar a los estados de Frappe CRM\nCrear como estados nuevos",
+   "default": "Asignar a los estados de Frappe CRM",
+   "description": "Asignar: cada etapa de leads y negociaciones va a un estado que ya existe en Frappe CRM (ganadas a Won, perdidas a Lost, en curso repartidas en orden). Es una propuesta: la corrida en seco la deja en Bitrix24 Status Map para corregirla. Crear: cada etapa se crea como un estado nuevo con su nombre de Bitrix24."
   },
   {
    "fieldname": "corrida_cb",
@@ -247,7 +256,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-02 00:00:00.000000",
+ "modified": "2026-10-03 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Cortec Bitrix24",
  "name": "Bitrix24 Migration Settings",

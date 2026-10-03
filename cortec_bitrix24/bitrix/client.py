@@ -321,9 +321,8 @@ class B24Client:
             if response.status_code in (401, 403):
                 raise B24AuthError(
                     "ACCESS_DENIED",
-                    "El webhook fue rechazado por el portal "
-                    f"(HTTP {response.status_code}). Verifique que el token "
-                    "siga vigente y que el usuario tenga permiso sobre el CRM.",
+                    f"Bitrix24 rechazó la llamada (HTTP {response.status_code}). "
+                    + permission_hint(method),
                     method,
                 )
 
@@ -398,7 +397,7 @@ class B24Client:
         description = _error_description(data)
 
         if code in AUTH_ERROR_CODES:
-            raise B24AuthError(code, description, method)
+            raise B24AuthError(code, f"{description}. {permission_hint(method)}", method)
 
         if code in ("ERROR_METHOD_NOT_FOUND", "METHOD_NOT_FOUND"):
             raise B24FatalError(
@@ -496,6 +495,40 @@ def _safe_url(url: str) -> str:
         parts[-1] = "***"
         return "/".join(parts) + "/"
     return "***"
+
+
+# Permiso del webhook que exige cada familia de métodos. Más específico
+# primero: «imopenlines.» antes que «im.».
+PERMISSIONS = (
+    (("tasks.", "task."), "Tareas", "task"),
+    (("sonet_group.",), "Grupos de trabajo", "sonet_group"),
+    (("imopenlines.",), "Canales abiertos", "imopenlines"),
+    (("im.",), "Chat y notificaciones", "im"),
+    (("disk.",), "Drive", "disk"),
+    (("user.",), "Usuarios", "user"),
+    (("crm.",), "CRM", "crm"),
+)
+
+
+def permission_hint(method: str) -> str:
+    """
+    Qué hacer ante un rechazo del portal, nombrando el permiso del
+    webhook que exige `method`.
+
+    Bitrix24 responde 401 tanto si el token ya no vale como si el
+    webhook no tiene permiso sobre el módulo del método. Lo segundo es
+    lo habitual al añadir fases (p. ej. Tareas): decirlo con el nombre
+    del permiso ahorra adivinar.
+    """
+    method = (method or "").lower()
+    for prefixes, label, scope in PERMISSIONS:
+        if method.startswith(prefixes):
+            return (
+                f"Al webhook le falta el permiso «{label}» ({scope}) que exige "
+                f"{method}, o su token ya no es válido. Añádalo en Bitrix24 → "
+                "Recursos para desarrolladores → Integraciones → editar el webhook."
+            )
+    return "Verifique que el token del webhook siga vigente y sus permisos."
 
 
 def get_client(logger: Callable[[str, str], None] | None = None) -> B24Client:

@@ -95,8 +95,10 @@ Grant these permissions:
 | **Tasks** (`task`) | Tasks and Projects module (phase 9) |
 | **Workgroups** (`sonet_group`) | The project of each task |
 
-Without a permission, the phase that uses it fails or comes out empty;
-the rest carry on.
+Without the **CRM** permission the run cannot proceed. If another one is
+missing, the phase that uses it is skipped (listed under
+*fases_omitidas* in the report and in the log, naming the permission)
+and the rest carry on.
 
 Copy the URL, which looks like this:
 
@@ -115,6 +117,7 @@ https://cortec.bitrix24.es/rest/1/xxxxxxxxxxxxxxxx/
 | Fallback user (*Usuario de respaldo*) | the agent who receives whatever has no owner |
 | Country code | `506` |
 | Dry run (*Corrida en seco*) | ✅ until the report has been reviewed |
+| Bitrix24 stages (*Etapas de Bitrix24*) | *Asignar a los estados de Frappe CRM* (map to Frappe CRM's statuses) or *Crear como estados nuevos* (create new ones) |
 | Silence CORTEC Helpdesk alerts | ✅ |
 | Preserve original dates | ✅ |
 
@@ -126,12 +129,15 @@ it finishes.
 ### 3. Dry run
 
 **Migrar → Corrida en seco.** Runs are always launched from that menu:
-it is what queues the job. It writes nothing; it produces a
-`Bitrix24 Migration Run` whose *Informe* (report) field contains:
+it is what queues the job. It writes nothing to the CRM, but it **does
+fill the maps** of users, stages and fields (*Bitrix24 User Map*,
+*Status Map* and *Field Map*), which are configuration and what step 4
+reviews. It produces a `Bitrix24 Migration Run` whose *Informe* (report)
+field contains:
 
 - expected counts per entity,
 - Bitrix24 users with no matching `User` in Frappe,
-- unmapped stages,
+- *etapas_propuestas*: which Frappe CRM status each stage would go to,
 - the `UF_CRM_*` fields that will be created,
 - under *antes_de_empezar*: the **scheduled alerts** that must be
   disabled and, if any, the notifications the real run would not be able
@@ -144,11 +150,18 @@ With the report in hand:
 1. **Bitrix24 User Map** — fill in the *Usuario de Frappe* field for the
    agents who should keep their leads. Anything entered by hand is not
    overwritten on later passes.
-2. **Bitrix24 Status Map** — fix the stages the heuristic got wrong.
-   Mind the *Tipo* field: only `Open` counts as "open" for
-   `cortec_helpdesk`'s WhatsApp routing.
+2. **Bitrix24 Status Map** — check the Frappe CRM status proposed for
+   each stage and fix any that does not fit. A row fixed by hand is not
+   overwritten again.
 3. **Bitrix24 Field Map** — tick *Omitir* (skip) on the custom fields
-   that are not worth carrying over.
+   that are not worth carrying over. The companies' invoice requisites
+   (`UF_LOGO`, `UF_STAMP`, `UF_DIRECTOR_SIGN`, `UF_ACCOUNTANT_SIGN`) come
+   already skipped.
+
+In a dry run, activities show up as "omitidas" and there are no WhatsApp
+messages or comments: those phases hang each record from its already
+migrated Lead or Contact, and a dry run has none. The real run does
+migrate them.
 
 ### 5. Real run
 
@@ -363,11 +376,19 @@ Lead has no value field. It is written inside `custom_comentarios`
 rather than forced into `annual_revenue`, which means the company's
 yearly turnover and would distort reports.
 
-### In-progress stages → `Open`, not `Ongoing`
+### Stages are mapped to Frappe CRM's statuses
 
-`cortec_helpdesk` compares the status type against the exact string
-`"Open"`. A stage marked `Ongoing` would make an inbound WhatsApp count
-as unattended and create a duplicate Lead.
+With *Asignar a los estados de Frappe CRM* (the default) no status is
+created. Each stage is proposed against the existing ones: won stages to
+the *Won* type (for leads, which have none, to the last in-progress
+status), lost stages to the *Lost* type (junk ones to "Junk"), and
+in-progress stages spread in order over the *Open* and *Ongoing* ones.
+The proposal is in *Bitrix24 Status Map* from the dry run on.
+
+With *Crear como estados nuevos* each stage is created with its Bitrix24
+name, and in-progress ones get type `Open`. `cortec_helpdesk` ≥ 1.0.12
+treats any status other than *Won* and *Lost* as open, so neither mode
+duplicates Leads from WhatsApp.
 
 ## Troubleshooting
 

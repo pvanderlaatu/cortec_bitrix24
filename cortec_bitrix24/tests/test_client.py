@@ -18,7 +18,13 @@ dar ningún error visible:
 
 import unittest
 
-from cortec_bitrix24.bitrix.client import PAGE_SIZE, B24Client, _flatten, _safe_url
+from cortec_bitrix24.bitrix.client import (
+    PAGE_SIZE,
+    B24Client,
+    _flatten,
+    _safe_url,
+    permission_hint,
+)
 from cortec_bitrix24.bitrix.errors import B24AuthError
 
 WEBHOOK = "https://cortec.bitrix24.es/rest/1/s3cr3tt0k3n/"
@@ -230,3 +236,35 @@ class TestBatchEncoding(unittest.TestCase):
 
     def test_batch_vacio_no_llama_al_portal(self):
         self.assertEqual(_client().batch({}), {})
+
+
+class TestPermisoQueFalta(unittest.TestCase):
+    """El rechazo por permisos nombra el permiso del webhook que falta."""
+
+    def test_cada_familia_de_metodos_nombra_su_permiso(self):
+        casos = {
+            "tasks.task.list": "Tareas",
+            "task.commentitem.getlist": "Tareas",
+            "sonet_group.get": "Grupos de trabajo",
+            "imopenlines.crm.chat.get": "Canales abiertos",
+            "im.dialog.messages.get": "Chat y notificaciones",
+            "disk.file.get": "Drive",
+            "user.get": "Usuarios",
+            "crm.lead.list": "CRM",
+        }
+        for metodo, permiso in casos.items():
+            self.assertIn(f"«{permiso}»", permission_hint(metodo), metodo)
+
+    def test_metodo_desconocido(self):
+        self.assertIn("token", permission_hint("algo.raro"))
+
+    def test_el_401_dice_que_permiso_falta(self):
+        client = _client()
+
+        class Respuesta:
+            status_code = 401
+
+        client._session.post = lambda *a, **k: Respuesta()
+        with self.assertRaises(B24AuthError) as e:
+            client.call("tasks.task.list")
+        self.assertIn("«Tareas»", str(e.exception))

@@ -30,21 +30,31 @@ Trae de Bitrix24 los catálogos de los que cuelga todo lo demás:
 y deja en Bitrix24 Status Map la correspondencia etapa → estado, que es
 lo que consultan las fases de leads y de negociaciones.
 
-Sobre el tipo de estado
+Etapas: asignar o crear
 -----------------------
-`SEMANTICS` de Bitrix24 vale "S" (ganado), "F" (perdido) o nada (en
-curso). Las etapas en curso se mapean a **"Open"**, no a "Ongoing",
-aunque Frappe CRM ofrezca ambos. El motivo es de integración:
-`cortec_helpdesk.overrides.whatsapp._has_open_reference` compara el tipo
-con la cadena exacta "Open", y un WhatsApp entrante sobre un Lead
-marcado "Ongoing" se tomaría como no atendido y generaría un Lead
-duplicado. Quien prefiera el matiz puede reclasificar a mano después:
-el mapa es editable.
+Según «Etapas de Bitrix24» en Settings:
+
+- **Asignar a los estados de Frappe CRM** (por defecto): no se crea
+  ningún estado. Cada etapa se propone contra los que ya existen
+  (propose_targets): ganadas → tipo Won, perdidas → tipo Lost (las de
+  basura a «Junk» si existe), en curso → repartidas en orden sobre los
+  Open/Ongoing.
+- **Crear como estados nuevos**: un estado por etapa, con su nombre de
+  Bitrix24. `SEMANTICS` "S" → Won, "F" → Lost, nada → Open.
+
+En los dos casos el resultado queda en Bitrix24 Status Map, **también en
+la corrida en seco**: es configuración, no datos del CRM, y es lo que se
+revisa y corrige a mano antes de la corrida real. Una fila corregida a
+mano no se vuelve a pisar.
 """
 
 import frappe
 
 from cortec_bitrix24.utils import as_int, local_cache
+
+# Valores del campo «Etapas de Bitrix24» de Settings.
+STRATEGY_ASSIGN = "Asignar a los estados de Frappe CRM"
+STRATEGY_CREATE = "Crear como estados nuevos"
 
 # ENTITY_ID de crm.status.list → cómo tratarlo.
 LEAD_STATUS_ENTITY = "STATUS"
@@ -79,16 +89,30 @@ def run(ctx) -> None:
 
     buckets = {"lead_status": 0, "deal_status": 0, "source": 0, "industry": 0}
 
+    lead_stages = [r for r in statuses if (r.get("ENTITY_ID") or "").strip() == LEAD_STATUS_ENTITY]
+    deal_stages: dict[str, list[dict]] = {}
+    for row in statuses:
+        entity = (row.get("ENTITY_ID") or "").strip()
+        if entity.startswith(DEAL_STAGE_PREFIX):
+            deal_stages.setdefault(entity, []).append(row)
+
+    buckets["lead_status"] = len(lead_stages)
+    buckets["deal_status"] = sum(len(v) for v in deal_stages.values())
+
+    if (ctx.settings.get("status_strategy") or STRATEGY_ASSIGN) == STRATEGY_ASSIGN:
+        _assign_stages(ctx, "Lead", "CRM Lead Status", {LEAD_STATUS_ENTITY: lead_stages})
+        _assign_stages(ctx, "Deal", "CRM Deal Status", deal_stages)
+    else:
+        for row in lead_stages:
+            _sync_lead_status(ctx, row)
+        for entity, rows in deal_stages.items():
+            for row in rows:
+                _sync_deal_status(ctx, row, entity, categories)
+
     for row in statuses:
         entity = (row.get("ENTITY_ID") or "").strip()
 
-        if entity == LEAD_STATUS_ENTITY:
-            _sync_lead_status(ctx, row)
-            buckets["lead_status"] += 1
-        elif entity.startswith(DEAL_STAGE_PREFIX):
-            _sync_deal_status(ctx, row, entity, categories)
-            buckets["deal_status"] += 1
-        elif entity == SOURCE_ENTITY:
+        if entity == SOURCE_ENTITY:
             _sync_simple(ctx, "CRM Lead Source", "source_name", row)
             buckets["source"] += 1
         elif entity == INDUSTRY_ENTITY:
@@ -136,6 +160,106 @@ def fetch_all_statuses(client) -> list[dict]:
         start = int(next_start)
 
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Asignar las etapas a los estados de Frappe CRM
+# ---------------------------------------------------------------------------
+
+
+def _assign_stages(ctx, entity: str, status_doctype: str, stages_by_entity: dict) -> None:
+    """
+    Propone, para cada etapa de Bitrix24, uno de los estados que ya
+    existen en Frappe CRM, y lo deja en Bitrix24 Status Map. No crea
+    estados.
+    """
+    targets = frappe.get_all(
+        status_doctype, fields=["name", "type"], order_by="position asc, creation asc"
+    )
+    types = {t.name: t.type for t in targets}
+
+    if not targets:
+        ctx.log(
+            "warning",
+            f"No hay ningún {status_doctype} en Frappe CRM: las etapas de {entity} "
+            "quedan sin asignar en Bitrix24 Status Map.",
+        )
+
+    for bitrix_entity, stages in stages_by_entity.items():
+        category_id = bitrix_entity[len(DEAL_STAGE_PREFIX) :].lstrip("_") or "0"
+        if entity == "Lead":
+            category_id = ""
+
+        for status_id, target in propose_targets(stages, targets).items():
+            stage = next(s for s in stages if str(s.get("STATUS_ID")) == status_id)
+            label = (stage.get("NAME") or status_id).strip()
+            _upsert_status_map(
+                ctx,
+                entity=entity,
+                bitrix_status_id=status_id,
+                bitrix_label=label,
+                category_id=category_id,
+                status_doctype=status_doctype,
+                crm_status=target,
+                status_type=types.get(target) or _status_type(stage),
+            )
+            ctx.add_to_note_list(
+                "etapas_propuestas", f"{entity}: {label} → {target or '(sin asignar)'}"
+            )
+
+
+def propose_targets(stages: list[dict], targets: list) -> dict[str, str | None]:
+    """
+    {STATUS_ID de Bitrix24: nombre del estado de Frappe CRM propuesto}.
+
+    `targets` son los estados existentes, en orden de posición, con
+    `name` y `type` (Open, Ongoing, Won, Lost).
+
+    - Ganada (SEMANTICS "S") → el primer estado Won. Si no hay ninguno
+      (en Frappe CRM los estados de Lead no tienen Won), el último de
+      los en curso, que suele ser el más avanzado (p. ej. «Qualified»).
+    - Perdida (SEMANTICS "F") → «Junk» si la etapa es de basura y ese
+      estado existe; si no, el primer Lost que no sea «Junk».
+    - En curso → se reparten en orden sobre los Open/Ongoing: la
+      primera etapa al primer estado, la última al último.
+    """
+
+    def get(t, key):
+        return t.get(key) if isinstance(t, dict) else getattr(t, key, None)
+
+    open_ = [get(t, "name") for t in targets if get(t, "type") in ("Open", "Ongoing")]
+    won = [get(t, "name") for t in targets if get(t, "type") == "Won"]
+    lost = [get(t, "name") for t in targets if get(t, "type") == "Lost"]
+    junk = next((n for n in lost if (n or "").strip().lower() == "junk"), None)
+    lost_other = [n for n in lost if n != junk]
+
+    in_progress = sorted(
+        (s for s in stages if _status_type(s) == "Open"), key=lambda s: as_int(s.get("SORT"))
+    )
+
+    result: dict[str, str | None] = {}
+    for stage in stages:
+        status_id = str(stage.get("STATUS_ID"))
+        kind = _status_type(stage)
+
+        if kind == "Won":
+            target = won[0] if won else (open_[-1] if open_ else None)
+        elif kind == "Lost":
+            text = f"{status_id} {stage.get('NAME') or ''}".lower()
+            if junk and "junk" in text:
+                target = junk
+            else:
+                target = (lost_other or lost or [None])[0]
+        else:
+            if not open_:
+                target = None
+            else:
+                index = in_progress.index(stage)
+                target = open_[index * len(open_) // max(len(in_progress), 1)]
+
+        result[status_id] = target
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -329,22 +453,22 @@ def _upsert_status_map(
     Fila de Bitrix24 Status Map.
 
     Se respeta lo que un humano haya cambiado: si la fila ya existe con
-    un `crm_status` distinto del que Bitrix24 sugiere, se deja como
-    está. El mapa es precisamente el sitio previsto para corregir a mano
-    una correspondencia que la heurística no acierta.
-    """
-    if ctx.dry_run:
-        return
+    un `crm_status`, se deja como está. El mapa es precisamente el sitio
+    previsto para corregir a mano una correspondencia que la heurística
+    no acierta.
 
+    Se escribe también en seco. Un `crm_status` que todavía no existe
+    (estado que se creará en la corrida real) se deja vacío y se rellena
+    en la corrida real.
+    """
     name = f"{entity}::{bitrix_status_id}"
+    target = crm_status if crm_status and frappe.db.exists(status_doctype, crm_status) else None
 
     if frappe.db.exists("Bitrix24 Status Map", name):
-        frappe.db.set_value(
-            "Bitrix24 Status Map",
-            name,
-            {"bitrix_label": bitrix_label, "category_id": category_id},
-            update_modified=False,
-        )
+        values = {"bitrix_label": bitrix_label, "category_id": category_id}
+        if target and not frappe.db.get_value("Bitrix24 Status Map", name, "crm_status"):
+            values.update({"crm_status": target, "status_type": status_type})
+        frappe.db.set_value("Bitrix24 Status Map", name, values, update_modified=False)
         return
 
     frappe.get_doc(
@@ -355,7 +479,7 @@ def _upsert_status_map(
             "bitrix_label": bitrix_label,
             "category_id": category_id,
             "status_doctype": status_doctype,
-            "crm_status": crm_status,
+            "crm_status": target,
             "status_type": status_type,
         }
     ).insert(ignore_permissions=True)
@@ -410,6 +534,12 @@ def resolve_catalog(ctx, entity_id: str, code, doctype: str) -> str | None:
     if not label:
         ctx.add_to_note_list("catalogos_sin_mapear", f"{entity_id}: {code}")
         return None
+
+    # En seco la fase de diccionarios no crea los catálogos, solo los
+    # anota en «crear_<doctype>»: los que vaya a crear cuentan como
+    # existentes, para no avisar de un problema que no lo es.
+    if ctx.dry_run and label in (ctx.summary.get("dicts") or {}).get(f"crear_{doctype}", []):
+        return label
 
     if not frappe.db.exists(doctype, label):
         ctx.add_to_note_list("catalogos_sin_destino", f"{doctype}: {label}")

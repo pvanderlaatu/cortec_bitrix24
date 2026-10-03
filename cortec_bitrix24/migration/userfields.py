@@ -87,6 +87,17 @@ TYPE_MAP = {
 # nada. Convertirlo en tabla hija exigiría un doctype por campo.
 MULTIPLE_FIELDTYPE = "Small Text"
 
+# Campos estándar de Bitrix24 para los requisitos de las facturas
+# (logo, sello y firmas de la empresa). Casi siempre están vacíos y no
+# tienen uso en Frappe CRM: nacen marcados «Omitir», y se pueden
+# desmarcar en Bitrix24 Field Map.
+IGNORED_BY_DEFAULT = {
+    ("Company", "UF_LOGO"),
+    ("Company", "UF_STAMP"),
+    ("Company", "UF_DIRECTOR_SIGN"),
+    ("Company", "UF_ACCOUNTANT_SIGN"),
+}
+
 # Límite práctico para un nombre de columna en MariaDB dentro de Frappe.
 MAX_FIELDNAME_LENGTH = 60
 
@@ -131,13 +142,8 @@ def _sync_field(ctx, entity, row, target_doctype, insert_after) -> str | None:
     fieldname = _fieldname(uf_code)
     map_name = f"{entity}::{uf_code}"
 
-    if ctx.dry_run:
-        if not frappe.db.exists("Bitrix24 Field Map", map_name):
-            ctx.add_to_note_list(
-                "campos_a_crear", f"{entity}.{uf_code} → {target_doctype}.{fieldname}"
-            )
-        return None
-
+    # También en seco: el mapa es configuración y es lo que se revisa
+    # (marcar «Omitir», cambiar el destino) antes de la corrida real.
     row_map = _upsert_field_map(
         ctx,
         map_name=map_name,
@@ -149,6 +155,18 @@ def _sync_field(ctx, entity, row, target_doctype, insert_after) -> str | None:
         fieldname=fieldname,
         options=options,
     )
+
+    if ctx.dry_run:
+        # Se lista mientras el Custom Field no exista, aunque el mapa ya
+        # venga de una corrida en seco anterior.
+        if not row_map.ignore and not frappe.db.exists(
+            "Custom Field", f"{row_map.target_doctype}-{row_map.target_fieldname}"
+        ):
+            ctx.add_to_note_list(
+                "campos_a_crear",
+                f"{entity}.{uf_code} → {row_map.target_doctype}.{row_map.target_fieldname}",
+            )
+        return None
 
     if row_map.ignore or not row_map.create_custom_field:
         return None
@@ -181,6 +199,8 @@ def _upsert_field_map(
     precisamente las decisiones que se toman a mano tras leer el
     dry-run.
     """
+    ignored = (entity, uf_code.upper()) in IGNORED_BY_DEFAULT
+
     if frappe.db.exists("Bitrix24 Field Map", map_name):
         frappe.db.set_value(
             "Bitrix24 Field Map",
@@ -205,8 +225,8 @@ def _upsert_field_map(
             "uf_type": uf_type,
             "target_doctype": target_doctype,
             "target_fieldname": fieldname,
-            "create_custom_field": 1,
-            "ignore": 0,
+            "create_custom_field": 0 if ignored else 1,
+            "ignore": 1 if ignored else 0,
             "options_json": json.dumps(options, ensure_ascii=False)
             if options
             else None,

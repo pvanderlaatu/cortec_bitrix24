@@ -92,7 +92,9 @@ Marcar los permisos:
 | **Tareas** (`task`) | Módulo Tareas y proyectos (fase 9) |
 | **Grupos de trabajo** (`sonet_group`) | Proyecto de cada tarea |
 
-Sin un permiso, la fase que lo usa falla o queda vacía; el resto sigue.
+Sin el permiso **CRM** la corrida no avanza. Si falta otro, la fase que
+lo usa se omite (queda en *fases_omitidas* del informe y en el log, con
+el nombre del permiso) y el resto sigue.
 
 Copiar la URL, que tiene esta forma:
 
@@ -111,6 +113,7 @@ https://cortec.bitrix24.es/rest/1/xxxxxxxxxxxxxxxx/
 | Usuario de respaldo | el agente que reciba lo que no tenga dueño |
 | Código de país | `506` |
 | Corrida en seco | ✅ hasta haber revisado el informe |
+| Etapas de Bitrix24 | *Asignar a los estados de Frappe CRM* (o *Crear como estados nuevos*) |
 | Silenciar avisos de CORTEC Helpdesk | ✅ |
 | Conservar fechas originales | ✅ |
 
@@ -121,12 +124,15 @@ coteja la migración al terminar.
 ### 3. Corrida en seco
 
 **Migrar → Corrida en seco.** Las corridas se lanzan siempre desde ese
-menú: es el que encola el job. No escribe nada; produce un
-`Bitrix24 Migration Run` cuyo campo *Informe* trae:
+menú: es el que encola el job. No escribe nada en el CRM, pero **sí
+llena los mapas** de usuarios, etapas y campos (*Bitrix24 User Map*,
+*Status Map* y *Field Map*), que son configuración y es lo que se revisa
+en el paso 4. Produce un `Bitrix24 Migration Run` cuyo campo *Informe*
+trae:
 
 - conteos previstos por entidad,
 - usuarios de Bitrix24 sin `User` equivalente en Frappe,
-- etapas sin mapear,
+- *etapas_propuestas*: a qué estado de Frappe CRM iría cada etapa,
 - campos `UF_CRM_*` que se van a crear,
 - en *antes_de_empezar*: las **alertas programadas** que hay que
   desactivar y, si las hubiera, las notificaciones que la corrida real
@@ -139,11 +145,17 @@ Con el informe en la mano:
 1. **Bitrix24 User Map** — rellenar el campo *Usuario de Frappe* de los
    agentes que deban conservar sus leads. Lo que se ponga a mano no se
    vuelve a pisar en las pasadas siguientes.
-2. **Bitrix24 Status Map** — corregir las etapas que la heurística no
-   acertó. Ojo al campo *Tipo*: solo `Open` cuenta como "abierto" para
-   el enrutado de WhatsApp de `cortec_helpdesk`.
+2. **Bitrix24 Status Map** — revisar el estado de Frappe CRM propuesto
+   para cada etapa y corregir el que no encaje. Una fila corregida a mano
+   no se vuelve a pisar.
 3. **Bitrix24 Field Map** — marcar *Omitir* en los campos personalizados
-   que no valga la pena arrastrar.
+   que no valga la pena arrastrar. Los requisitos de factura de las
+   empresas (`UF_LOGO`, `UF_STAMP`, `UF_DIRECTOR_SIGN`,
+   `UF_ACCOUNTANT_SIGN`) ya vienen omitidos.
+
+En seco las actividades salen como «omitidas» y no hay WhatsApp ni
+comentarios: esas fases cuelgan cada registro de su Lead o Contacto ya
+migrado, y en seco no hay ninguno. La corrida real sí los migra.
 
 ### 5. Corrida real
 
@@ -359,11 +371,19 @@ CRM Lead no tiene campo de valor. Se anota dentro de
 `custom_comentarios` en vez de forzarlo dentro de `annual_revenue`, que
 significa la facturación anual de la empresa y falsearía los informes.
 
-### Etapas en curso → `Open`, no `Ongoing`
+### Las etapas se asignan a los estados de Frappe CRM
 
-`cortec_helpdesk` compara el tipo de estado con la cadena exacta
-`"Open"`. Una etapa marcada `Ongoing` haría que un WhatsApp entrante se
-tomara como no atendido y generara un Lead duplicado.
+Con *Asignar a los estados de Frappe CRM* (por defecto) no se crea
+ningún estado. Cada etapa se propone contra los que existen: ganadas al
+de tipo *Won* (en leads, que no tienen ninguno, al último en curso),
+perdidas al de tipo *Lost* (las de basura a «Junk»), y las en curso
+repartidas en orden sobre los *Open* y *Ongoing*. La propuesta queda en
+*Bitrix24 Status Map* desde la corrida en seco.
+
+Con *Crear como estados nuevos* cada etapa se crea con su nombre de
+Bitrix24, y las en curso con tipo `Open`. `cortec_helpdesk` ≥ 1.0.12
+trata como abierto cualquier estado que no sea *Won* ni *Lost*, así que
+ninguno de los dos modos duplica Leads por WhatsApp.
 
 ## Diagnóstico
 

@@ -62,9 +62,8 @@ def run(ctx) -> None:
         if not frappe_user:
             sin_mapear.append(f"{bitrix_id} — {nombre or '(sin nombre)'} <{email}>")
 
-        if ctx.dry_run:
-            continue
-
+        # También en seco: el mapa es configuración, no datos del CRM, y
+        # es lo que hay que revisar antes de la corrida real.
         _upsert_user_map(
             ctx,
             bitrix_id=bitrix_id,
