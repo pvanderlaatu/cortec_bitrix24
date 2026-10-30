@@ -55,6 +55,12 @@ from cortec_bitrix24.cortec_bitrix24.doctype.bitrix24_migration_settings.bitrix2
 # una caída no tire por la borda media hora de trabajo.
 COMMIT_EVERY = 200
 
+# Además, como mucho cada tantos segundos. Una fase que recorre el portal
+# sin crear nada (las actividades en seco, por ejemplo) nunca llega a
+# COMMIT_EVERY, y sin esto el formulario de la corrida parece congelado
+# hasta que la fase termina.
+CHECKPOINT_SECONDS = 30
+
 
 class MigrationContext:
     """
@@ -78,6 +84,7 @@ class MigrationContext:
         self.delta_since = self.run.delta_since
 
         self.client = get_client(logger=self._client_logger)
+        self.client.on_request = self._on_request
 
         self.phase = ""
         self.counters = {"created": 0, "updated": 0, "skipped": 0, "errors": 0}
@@ -85,10 +92,16 @@ class MigrationContext:
         self.summary = json.loads(self.run.summary or "{}")
 
         self._since_commit = 0
+        self._last_checkpoint = time.monotonic()
 
     # -----------------------------------------------------------------
     # Contadores y checkpoints
     # -----------------------------------------------------------------
+
+    def _on_request(self) -> None:
+        """Tras cada petición al portal: guarda el avance si toca por tiempo."""
+        if time.monotonic() - self._last_checkpoint >= CHECKPOINT_SECONDS:
+            self.checkpoint()
 
     def count(self, key: str, n: int = 1) -> None:
         self.counters[key] = self.counters.get(key, 0) + n
@@ -99,6 +112,7 @@ class MigrationContext:
     def checkpoint(self) -> None:
         """Persiste contadores y cursores, y cierra la transacción."""
         self._since_commit = 0
+        self._last_checkpoint = time.monotonic()
         self._flush_run()
         # También en seco: las fases no escriben nada en el CRM, pero el
         # avance y el log de la corrida solo se ven desde fuera si se

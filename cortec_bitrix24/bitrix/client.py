@@ -112,6 +112,11 @@ class B24Client:
         self.request_count = 0
         self.throttled_seconds = 0.0
 
+        # Se llama tras cada respuesta del portal. La corrida lo usa para
+        # guardar su avance por tiempo, también en fases que recorren
+        # miles de registros sin crear ninguno.
+        self.on_request: Callable[[], None] | None = None
+
     # -----------------------------------------------------------------
     # API pública
     # -----------------------------------------------------------------
@@ -317,6 +322,8 @@ class B24Client:
                 continue
 
             self.request_count += 1
+            if self.on_request:
+                self.on_request()
 
             if response.status_code in (401, 403):
                 raise B24AuthError(

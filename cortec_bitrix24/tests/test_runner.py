@@ -164,3 +164,36 @@ class TestFasesOpcionales(unittest.TestCase):
         self.assertTrue({"users", "tasks", "openlines", "files", "webforms"} <= runner.OPTIONAL_PHASES)
         for fase in ("dicts", "userfields", "companies", "contacts", "leads", "deals", "activities"):
             self.assertNotIn(fase, runner.OPTIONAL_PHASES)
+
+
+class TestGuardarAvancePorTiempo(unittest.TestCase):
+    """
+    Una fase que recorre el portal sin crear nada (las actividades en
+    seco) nunca llegaba a COMMIT_EVERY: el formulario de la corrida
+    parecía congelado hasta que la fase terminaba.
+    """
+
+    def _ctx(self):
+        ctx = object.__new__(runner.MigrationContext)
+        ctx.checkpoints = 0
+
+        def checkpoint():
+            ctx.checkpoints += 1
+            ctx._last_checkpoint = runner.time.monotonic()
+
+        ctx.checkpoint = checkpoint
+        return ctx
+
+    def test_guarda_cuando_pasa_el_intervalo(self):
+        ctx = self._ctx()
+        with mock.patch.object(runner.time, "monotonic", return_value=1000.0):
+            ctx._last_checkpoint = 1000.0 - runner.CHECKPOINT_SECONDS
+            ctx._on_request()
+        self.assertEqual(ctx.checkpoints, 1)
+
+    def test_no_guarda_antes_de_tiempo(self):
+        ctx = self._ctx()
+        with mock.patch.object(runner.time, "monotonic", return_value=1000.0):
+            ctx._last_checkpoint = 1000.0 - runner.CHECKPOINT_SECONDS + 1
+            ctx._on_request()
+        self.assertEqual(ctx.checkpoints, 0)

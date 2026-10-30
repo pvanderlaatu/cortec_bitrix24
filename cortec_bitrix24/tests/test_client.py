@@ -268,3 +268,33 @@ class TestPermisoQueFalta(unittest.TestCase):
         with self.assertRaises(B24AuthError) as e:
             client.call("tasks.task.list")
         self.assertIn("«Tareas»", str(e.exception))
+
+
+class TestAvisoTrasCadaPeticion(unittest.TestCase):
+    def test_on_request_se_llama_tras_cada_respuesta(self):
+        client = _client()
+        avisos = []
+        client.on_request = lambda: avisos.append(1)
+
+        class Respuesta:
+            status_code = 200
+
+            def json(self):
+                return {"result": []}
+
+        client._session.post = lambda *a, **k: Respuesta()
+        client.call("crm.lead.list")
+        client.call("crm.deal.list")
+        self.assertEqual(len(avisos), 2)
+
+    def test_sin_on_request_no_falla(self):
+        client = _client()
+
+        class Respuesta:
+            status_code = 200
+
+            def json(self):
+                return {"result": []}
+
+        client._session.post = lambda *a, **k: Respuesta()
+        self.assertEqual(client.call("crm.lead.list"), [])
