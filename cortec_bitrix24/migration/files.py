@@ -38,6 +38,7 @@ perder el correo por culpa del fichero, peor.
 """
 
 import os
+import time
 
 import frappe
 import requests
@@ -48,6 +49,17 @@ from cortec_bitrix24.utils import as_int
 # Tiempo máximo de descarga de un adjunto. Los ficheros grandes de un
 # portal lento no deben congelar la corrida entera.
 DOWNLOAD_TIMEOUT = 120
+
+# `timeout` de requests es por operación de red (conexión y cada lectura),
+# no total: un portal que gotea bytes puede tardar horas. Este es el
+# límite de reloj para un fichero entero.
+DOWNLOAD_DEADLINE = 120
+CONNECT_TIMEOUT = 15
+
+# Tras tantos fallos de descarga seguidos se deja de bajar adjuntos el
+# resto de la corrida: el portal no responde y cada intento cuesta
+# minutos. Los documentos se migran igual, sin fichero.
+MAX_CONSECUTIVE_FAILURES = 5
 
 
 def run(ctx) -> None:
@@ -83,9 +95,22 @@ def attach(ctx, payload, doctype: str, docname: str) -> None:
         return
 
     for item in _normalize(payload):
+        if getattr(ctx, "_download_failures", 0) >= MAX_CONSECUTIVE_FAILURES:
+            if not getattr(ctx, "_downloads_disabled", False):
+                ctx._downloads_disabled = True
+                ctx.log(
+                    "error",
+                    f"{MAX_CONSECUTIVE_FAILURES} descargas seguidas fallaron: "
+                    "se dejan de bajar adjuntos el resto de la corrida. "
+                    "Relance después para recuperarlos.",
+                )
+            ctx.count("skipped")
+            continue
         try:
             _attach_one(ctx, item, doctype, docname)
+            ctx._download_failures = 0
         except Exception as e:
+            ctx._download_failures = getattr(ctx, "_download_failures", 0) + 1
             ctx.log(
                 "error",
                 f"No se pudo adjuntar el fichero {item.get('id')} a "
@@ -94,6 +119,10 @@ def attach(ctx, payload, doctype: str, docname: str) -> None:
                 target_doctype=doctype,
                 target_name=docname,
             )
+        finally:
+            # Las descargas no pasan por el cliente REST: sin esto el
+            # avance no se guarda mientras se bajan ficheros.
+            ctx._on_request()
 
 
 def _attach_one(ctx, item: dict, doctype: str, docname: str) -> None:
@@ -199,13 +228,21 @@ def _download(ctx, url: str, limite: int, file_id) -> bytes | None:
     del `Content-Length`: un portal puede no enviarlo, y cargar en
     memoria un fichero de 2 GB tumbaría el worker.
     """
-    with requests.get(url, stream=True, timeout=DOWNLOAD_TIMEOUT) as response:
+    deadline = time.monotonic() + DOWNLOAD_DEADLINE
+
+    with requests.get(
+        url, stream=True, timeout=(CONNECT_TIMEOUT, DOWNLOAD_TIMEOUT)
+    ) as response:
         response.raise_for_status()
 
         trozos = []
         total = 0
 
         for trozo in response.iter_content(chunk_size=65536):
+            if time.monotonic() > deadline:
+                raise TimeoutError(
+                    f"La descarga superó {DOWNLOAD_DEADLINE} s en total"
+                )
             if not trozo:
                 continue
             total += len(trozo)

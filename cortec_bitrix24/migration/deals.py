@@ -122,11 +122,13 @@ def _sync_deal(ctx, row: dict, contact_ids: list, fallback_status) -> None:
         "organization_name": (row.get("TITLE") or "").strip() or None,
     }
 
-    if status_type == "Lost" and comentarios:
-        # El motivo de pérdida de Bitrix24 no tiene campo propio: lo que
-        # hay es el texto de comentarios, y en una negociación perdida es
-        # justo donde el agente lo escribió.
-        values["lost_notes"] = comentarios
+    if status_type == "Lost":
+        # Frappe CRM exige un motivo de pérdida para guardar una
+        # negociación perdida. Bitrix24 no lo trae como campo propio: lo
+        # que hay es el texto de comentarios, donde el agente lo escribió.
+        values["lost_reason"] = _lost_reason(ctx)
+        if comentarios:
+            values["lost_notes"] = comentarios
 
     values.update(build_uf_values(ctx, "Deal", row))
 
@@ -238,6 +240,18 @@ def _chunks(iterable, size: int):
         if not chunk:
             return
         yield chunk
+
+
+LOST_REASON = "Migrado de Bitrix24"
+
+
+def _lost_reason(ctx) -> str:
+    """Motivo de pérdida genérico; se crea una sola vez (no en seco)."""
+    if not ctx.dry_run and not frappe.db.exists("CRM Lost Reason", LOST_REASON):
+        frappe.get_doc(
+            {"doctype": "CRM Lost Reason", "lost_reason": LOST_REASON}
+        ).insert(ignore_permissions=True)
+    return LOST_REASON
 
 
 def _status_type(status: str | None) -> str | None:
