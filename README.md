@@ -484,3 +484,40 @@ left unsilenced.
 - Compatible with Frappe v15/v16 and Frappe CRM v1.86.0.
 - It does not require ERPNext: tasks go to Frappe CRM's `CRM Task`, not
   to ERPNext's `Task`/`Project` doctypes (GPL-3.0).
+
+## Changelog
+
+Full notes for each version are on the [releases page](https://github.com/pvanderlaatu/cortec_bitrix24/releases).
+
+### 1.1.7 — 2026-11-05
+
+- Lost deals no longer fail with "Please specify a reason for losing the deal": they get the reason "Migrado de Bitrix24".
+- An attachment download has a 120 s overall limit; after 5 consecutive failures attachments are skipped for the rest of the run. Progress is saved after every attachment attempt.
+
+### 1.1.6 — 2026-10-30
+
+- A run's progress is also saved by time (every 30 s after a request to the portal), so long phases no longer look frozen.
+
+### 1.1.5 — 2026-10-02
+
+- Stages map to Frappe CRM's own statuses (new option, default), instead of creating new ones.
+- The dry run fills the user, status and field maps so they can be reviewed before the real run.
+- Bitrix24's invoice requisite fields are skipped by default.
+- A missing webhook permission skips only its phase (only CRM stops the run), and the error names the permission.
+
+### 1.1.4 — 2026-10-02
+
+- Frappe v16 compatibility: the "Usuarios" phase no longer uses `frappe.local.__dict__`.
+
+### 1.1.3 — 2026-10-02
+
+- The first phase ("Diccionarios") no longer loops forever on portals that ignore `start`.
+- Runs can only be launched from Bitrix24 Migration Settings → Migrar; the job is queued after the run is committed and uses `job_id`.
+
+### 1.1.2 — 2026-10-01
+
+- Dry runs save their progress; `abort_migration` finds the run in progress; pagination stops if its cursor does not advance.
+
+### 1.1.1 — 2026-10-01
+
+- First tagged release: incremental, idempotent migration of a Bitrix24 portal to Frappe CRM, with nobody notified, consent import and respect for erasure requests.

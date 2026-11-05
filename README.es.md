@@ -478,3 +478,40 @@ restaura, y una corrida real se aborta si falta algo por silenciar.
 - Compatible con Frappe v15/v16 y Frappe CRM v1.86.0.
 - No requiere ERPNext: las tareas van a `CRM Task` de Frappe CRM, y no a
   los doctypes `Task`/`Project` de ERPNext (GPL-3.0).
+
+## Historial de cambios
+
+Las notas completas de cada versión están en la [página de releases](https://github.com/pvanderlaatu/cortec_bitrix24/releases).
+
+### 1.1.7 — 2026-11-05
+
+- Las negociaciones perdidas ya no fallan con «Please specify a reason for losing the deal»: reciben el motivo «Migrado de Bitrix24».
+- La descarga de un adjunto tiene un límite total de 120 s; tras 5 fallos seguidos se omiten los adjuntos el resto de la corrida. El avance se guarda tras cada intento de adjunto.
+
+### 1.1.6 — 2026-10-30
+
+- El avance de la corrida también se guarda por tiempo (cada 30 s tras una petición al portal), así que las fases largas ya no parecen congeladas.
+
+### 1.1.5 — 2026-10-02
+
+- Las etapas se asignan a los estados propios de Frappe CRM (opción nueva, por defecto), en vez de crear estados nuevos.
+- La corrida en seco rellena los mapas de usuarios, estados y campos para revisarlos antes de la corrida real.
+- Los campos de requisitos de factura de Bitrix24 se omiten por defecto.
+- Un permiso que falta en el webhook omite solo su fase (únicamente CRM detiene la corrida), y el error nombra el permiso.
+
+### 1.1.4 — 2026-10-02
+
+- Compatibilidad con Frappe v16: la fase «Usuarios» ya no usa `frappe.local.__dict__`.
+
+### 1.1.3 — 2026-10-02
+
+- La primera fase («Diccionarios») ya no entra en bucle en portales que ignoran `start`.
+- Las corridas solo se lanzan desde Bitrix24 Migration Settings → Migrar; el job se encola tras confirmar la corrida y usa `job_id`.
+
+### 1.1.2 — 2026-10-01
+
+- Las corridas en seco guardan su avance; `abort_migration` encuentra la corrida en curso; la paginación se detiene si su cursor no avanza.
+
+### 1.1.1 — 2026-10-01
+
+- Primera versión etiquetada: migración incremental e idempotente de un portal de Bitrix24 a Frappe CRM, sin notificar a nadie, con importación de consentimientos y respeto de las solicitudes de supresión.
