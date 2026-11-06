@@ -121,6 +121,7 @@ def _migrate_activities(ctx) -> None:
             kind = _sync_activity(ctx, row)
             por_tipo[kind] = por_tipo.get(kind, 0) + 1
         except Exception as e:
+            files.reraise_if_job_timeout(e)
             ctx.log(
                 "error",
                 f"No se pudo migrar la actividad {bitrix_id}: {e}",

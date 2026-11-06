@@ -483,6 +483,11 @@ restaura, y una corrida real se aborta si falta algo por silenciar.
 
 Las notas completas de cada versión están en la [página de releases](https://github.com/pvanderlaatu/cortec_bitrix24/releases).
 
+### 1.1.8 — 2026-11-06
+
+- Las URL de los adjuntos se decodifican (`&amp;`), y las que llevan `auth=` vacío (`crm_show_file.php`) se sustituyen por la URL autenticada del Disco.
+- El timeout del job de RQ ya no se trata como un error de fichero: la corrida termina como fallida con sus cursores guardados y se puede reanudar.
+
 ### 1.1.7 — 2026-11-05
 
 - Las negociaciones perdidas ya no fallan con «Please specify a reason for losing the deal»: reciben el motivo «Migrado de Bitrix24».

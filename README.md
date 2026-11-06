@@ -489,6 +489,11 @@ left unsilenced.
 
 Full notes for each version are on the [releases page](https://github.com/pvanderlaatu/cortec_bitrix24/releases).
 
+### 1.1.8 — 2026-11-06
+
+- Attachment URLs are now decoded (`&amp;`), and URLs with an empty `auth=` (`crm_show_file.php`) are replaced by the authenticated Disk URL.
+- The RQ job timeout is no longer swallowed as a file error: the run ends as failed with its cursors saved, and can be resumed.
+
 ### 1.1.7 — 2026-11-05
 
 - Lost deals no longer fail with "Please specify a reason for losing the deal": they get the reason "Migrado de Bitrix24".

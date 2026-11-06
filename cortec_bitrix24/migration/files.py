@@ -37,6 +37,7 @@ el log y el correo se migra igual, sin él. Perder el fichero es malo;
 perder el correo por culpa del fichero, peor.
 """
 
+import html
 import os
 import time
 
@@ -82,6 +83,21 @@ def run(ctx) -> None:
 # ---------------------------------------------------------------------------
 
 
+def reraise_if_job_timeout(e: Exception) -> None:
+    """
+    El timeout del job de RQ llega como una excepción más. Si un
+    `except Exception` la traga, la corrida sigue sin límite y anota
+    «Task exceeded maximum timeout value» como si fuera un fallo del
+    fichero. Se relanza para que la corrida termine y se pueda reanudar.
+    """
+    if type(e).__name__ == "JobTimeoutException" or "maximum timeout value" in str(e):
+        raise e
+
+
+def _needs_api_url(url: str) -> bool:
+    return "crm_show_file.php" in url or "auth=&" in url or url.endswith("auth=")
+
+
 def attach(ctx, payload, doctype: str, docname: str) -> None:
     """
     Descarga los adjuntos de una actividad o mensaje y los cuelga del
@@ -110,6 +126,7 @@ def attach(ctx, payload, doctype: str, docname: str) -> None:
             _attach_one(ctx, item, doctype, docname)
             ctx._download_failures = 0
         except Exception as e:
+            reraise_if_job_timeout(e)
             ctx._download_failures = getattr(ctx, "_download_failures", 0) + 1
             ctx.log(
                 "error",
@@ -141,7 +158,12 @@ def _attach_one(ctx, item: dict, doctype: str, docname: str) -> None:
         ctx.count("skipped")
         return
 
-    url = item.get("url") or _download_url(ctx, file_id)
+    url = item.get("url")
+    if not url or _needs_api_url(url):
+        # Las URL `crm_show_file.php` de la actividad llevan `auth=` vacío:
+        # sin sesión del navegador no descargan nada. La del Disco, en
+        # cambio, lleva la autorización del webhook.
+        url = _download_url(ctx, file_id) or url
     if not url:
         ctx.log(
             "warning",
@@ -280,6 +302,13 @@ def _normalize(payload) -> list[dict]:
 
     out = []
     for item in payload:
+        if isinstance(item, dict):
+            # Bitrix24 devuelve las URL con `&amp;`: sin deshacerlo los
+            # parámetros llegan mal («amp;ownerId=…»).
+            item = {
+                k: html.unescape(v) if isinstance(v, str) else v
+                for k, v in item.items()
+            }
         if isinstance(item, dict):
             out.append(
                 {
