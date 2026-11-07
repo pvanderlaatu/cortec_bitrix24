@@ -39,7 +39,7 @@ from frappe.utils import cint, now_datetime
 # Una migración de decenas de miles de registros contra un portal que
 # admite dos peticiones por segundo dura horas.
 QUEUE = "long"
-JOB_TIMEOUT = 12 * 60 * 60
+JOB_TIMEOUT = 48 * 60 * 60
 
 
 @frappe.whitelist()
@@ -88,6 +88,9 @@ def start_migration(dry_run: int = 1, delta_since: str | None = None) -> dict:
             "delta_since": delta_since or settings.last_completed_run_end,
         }
     ).insert(ignore_permissions=True)
+
+    if not dry_run:
+        _inherit_cursors(run)
 
     # La corrida en seco no debe heredar el dry_run del Settings ni al
     # revés: el modo lo fija el Run, y el Settings solo da el valor
@@ -353,6 +356,49 @@ def _assert_no_run_in_progress() -> None:
                 "La corrida {0} sigue en curso. Espere a que termine, o márquela "
                 "como abortada desde su propio formulario."
             ).format(en_curso)
+        )
+
+
+def _inherit_cursors(run) -> None:
+    """
+    Una corrida real que sigue a otra fallida o abortada continúa donde
+    esta se quedó: las fases terminadas se omiten y las demás retoman su
+    cursor. Sin esto cada corrida nueva empieza de cero y vuelve a leer
+    todo el portal.
+
+    Solo se hereda de una corrida real posterior a la última completada;
+    tras una completada, la corrida nueva es incremental y empieza limpia.
+    Para repetir una fase concreta, edite los cursores de la corrida
+    antes de lanzarla de nuevo o quítela de ellos.
+    """
+    ultima_completa = frappe.db.get_value(
+        "Bitrix24 Migration Run",
+        {"mode": "Real", "status": "Completed"},
+        "creation",
+        order_by="creation desc",
+    )
+    filtros = {
+        "mode": "Real",
+        "status": ["in", ("Failed", "Aborted")],
+        "name": ["!=", run.name],
+    }
+    if ultima_completa:
+        filtros["creation"] = [">", ultima_completa]
+
+    previa = frappe.db.get_value(
+        "Bitrix24 Migration Run",
+        filtros,
+        ["name", "phase_state"],
+        order_by="creation desc",
+        as_dict=True,
+    )
+    if previa and previa.phase_state:
+        frappe.db.set_value(
+            "Bitrix24 Migration Run",
+            run.name,
+            "phase_state",
+            previa.phase_state,
+            update_modified=False,
         )
 
 

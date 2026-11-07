@@ -489,6 +489,12 @@ left unsilenced.
 
 Full notes for each version are on the [releases page](https://github.com/pvanderlaatu/cortec_bitrix24/releases).
 
+### 1.1.9 — 2026-11-07
+
+- A real run that follows a failed or aborted one inherits its cursors, so finished phases are skipped and the rest resume where they stopped, instead of starting from zero.
+- The job timeout is raised from 12 h to 48 h.
+- Attachment downloads are retried twice on network errors, timeouts and 5xx responses.
+
 ### 1.1.8 — 2026-11-06
 
 - Attachment URLs are now decoded (`&amp;`), and URLs with an empty `auth=` (`crm_show_file.php`) are replaced by the authenticated Disk URL.

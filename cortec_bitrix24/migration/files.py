@@ -62,6 +62,11 @@ CONNECT_TIMEOUT = 15
 # minutos. Los documentos se migran igual, sin fichero.
 MAX_CONSECUTIVE_FAILURES = 5
 
+# Intentos totales por descarga (1 inicial + 2 reintentos) y espera base
+# entre ellos, en segundos (se multiplica por el número de intento).
+DOWNLOAD_RETRIES = 3
+DOWNLOAD_BACKOFF = 5
+
 
 def run(ctx) -> None:
     """Recuento de lo que se adjuntó durante la corrida."""
@@ -243,6 +248,37 @@ def _download_url(ctx, file_id) -> str | None:
 
 
 def _download(ctx, url: str, limite: int, file_id) -> bytes | None:
+    """
+    Descarga con reintentos ante fallos transitorios del portal: errores
+    de red, timeouts y respuestas 5xx (un 502 suele ser pasajero). Los
+    4xx no se reintentan: el fichero no existe o no hay permiso.
+    """
+    for intento in range(1, DOWNLOAD_RETRIES + 1):
+        try:
+            return _download_once(ctx, url, limite, file_id)
+        except (
+            requests.ConnectionError,
+            requests.Timeout,
+            TimeoutError,
+            requests.HTTPError,
+        ) as e:
+            if isinstance(e, requests.HTTPError):
+                codigo = getattr(e.response, "status_code", 0) or 0
+                if codigo < 500:
+                    raise
+            if intento == DOWNLOAD_RETRIES:
+                raise
+            espera = DOWNLOAD_BACKOFF * intento
+            ctx.log(
+                "warning",
+                f"Descarga del fichero {file_id} fallida ({e.__class__.__name__}); "
+                f"reintento {intento}/{DOWNLOAD_RETRIES - 1} en {espera}s.",
+                bitrix_id=file_id,
+            )
+            time.sleep(espera)
+
+
+def _download_once(ctx, url: str, limite: int, file_id) -> bytes | None:
     """
     Baja el fichero comprobando el tamaño sobre la marcha.
 

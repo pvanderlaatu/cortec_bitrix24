@@ -483,6 +483,12 @@ restaura, y una corrida real se aborta si falta algo por silenciar.
 
 Las notas completas de cada versión están en la [página de releases](https://github.com/pvanderlaatu/cortec_bitrix24/releases).
 
+### 1.1.9 — 2026-11-07
+
+- Una corrida real que sigue a otra fallida o abortada hereda sus cursores: las fases terminadas se omiten y las demás continúan donde se quedaron, en vez de empezar de cero.
+- El límite de tiempo del job sube de 12 h a 48 h.
+- La descarga de adjuntos se reintenta dos veces ante errores de red, timeouts y respuestas 5xx.
+
 ### 1.1.8 — 2026-11-06
 
 - Las URL de los adjuntos se decodifican (`&amp;`), y las que llevan `auth=` vacío (`crm_show_file.php`) se sustituyen por la URL autenticada del Disco.
