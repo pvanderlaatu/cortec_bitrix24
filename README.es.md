@@ -483,6 +483,11 @@ restaura, y una corrida real se aborta si falta algo por silenciar.
 
 Las notas completas de cada versión están en la [página de releases](https://github.com/pvanderlaatu/cortec_bitrix24/releases).
 
+### 1.1.10 — 2026-11-09
+
+- Contactos, leads y empresas piden por nombre los campos multivalor (`PHONE`, `EMAIL`, `WEB`, `IM`): el `select: ["*"]` de Bitrix24 no los devuelve, y por eso se perdían correos y teléfonos. Para corregir lo ya migrado hay que repetir esas fases con un `delta_since` antiguo.
+- Un lead sin datos de persona propios (nombre, correo, teléfono, sitio web) los toma del contacto de Bitrix24 vinculado, en vez de usar el título del lead como nombre.
+
 ### 1.1.9 — 2026-11-07
 
 - Una corrida real que sigue a otra fallida o abortada hereda sus cursores: las fases terminadas se omiten y las demás continúan donde se quedaron, en vez de empezar de cero.

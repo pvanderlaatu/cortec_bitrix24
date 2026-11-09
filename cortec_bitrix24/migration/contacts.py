@@ -57,7 +57,8 @@ from cortec_bitrix24.utils import (
     to_bitrix_datetime,
 )
 
-SELECT_FIELDS = ["*", "UF_*"]
+# "*" no incluye los campos multivalor de Bitrix24: se piden por nombre.
+SELECT_FIELDS = ["*", "UF_*", "PHONE", "EMAIL", "WEB", "IM"]
 
 # VALUE_TYPE de Bitrix24 que se consideran móviles. El resto va a
 # `phone` y solo el primero se marca como principal.

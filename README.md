@@ -489,6 +489,11 @@ left unsilenced.
 
 Full notes for each version are on the [releases page](https://github.com/pvanderlaatu/cortec_bitrix24/releases).
 
+### 1.1.10 — 2026-11-09
+
+- Contacts, leads and companies now request the multi-value fields (`PHONE`, `EMAIL`, `WEB`, `IM`) by name: Bitrix24's `select: ["*"]` does not return them, so emails and phone numbers were being lost. To fix data already migrated, rerun those phases with an old `delta_since`.
+- A lead with no person data of its own (name, email, phone, website) takes it from its linked Bitrix24 contact instead of using the lead title as the first name.
+
 ### 1.1.9 — 2026-11-07
 
 - A real run that follows a failed or aborted one inherits its cursors, so finished phases are skipped and the rest resume where they stopped, instead of starting from zero.

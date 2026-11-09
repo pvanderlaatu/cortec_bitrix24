@@ -42,7 +42,8 @@ from cortec_bitrix24.utils import (
     to_bitrix_datetime,
 )
 
-SELECT_FIELDS = ["*", "UF_*"]
+# "*" no incluye los campos multivalor de Bitrix24: se piden por nombre.
+SELECT_FIELDS = ["*", "UF_*", "PHONE", "EMAIL", "WEB", "IM"]
 
 # STATUS_ID que Bitrix24 usa para los leads ya convertidos.
 CONVERTED_STATUS = "CONVERTED"
@@ -84,13 +85,25 @@ def _sync_lead(ctx, row: dict, fallback_status, has_comentarios: bool) -> None:
     last_name = (row.get("LAST_NAME") or "").strip()
     title = (row.get("TITLE") or "").strip()
 
+    # Los leads creados desde un formulario o un correo suelen llegar con
+    # solo el título; la persona (nombre, correo, teléfono) vive en el
+    # contacto vinculado. Se usa como respaldo campo por campo.
+    contact = _linked_contact(ctx, row)
+    if not first_name and not last_name:
+        first_name = (contact.get("NAME") or "").strip()
+        last_name = (contact.get("LAST_NAME") or "").strip()
+        if not row.get("SECOND_NAME"):
+            row["SECOND_NAME"] = contact.get("SECOND_NAME")
+    email = first_value(row.get("EMAIL")) or first_value(contact.get("EMAIL"))
+    phone = first_value(row.get("PHONE")) or first_value(contact.get("PHONE"))
+
     if not first_name and not last_name:
         # Sin nombre de persona, el título del lead es lo más
         # informativo que hay; si tampoco está, el teléfono o el correo.
         first_name = (
             title
-            or first_value(row.get("PHONE"))
-            or first_value(row.get("EMAIL"))
+            or phone
+            or email
             or f"Lead B24 {bitrix_id}"
         )
 
@@ -103,12 +116,9 @@ def _sync_lead(ctx, row: dict, fallback_status, has_comentarios: bool) -> None:
         "lead_name": title or None,
         "job_title": (row.get("POST") or "").strip() or None,
         "organization": (row.get("COMPANY_TITLE") or "").strip() or None,
-        "email": first_value(row.get("EMAIL")) or None,
-        "mobile_no": normalize_phone(
-            first_value(row.get("PHONE")), ctx.country_code
-        )
-        or None,
-        "website": first_value(row.get("WEB")) or None,
+        "email": email or None,
+        "mobile_no": normalize_phone(phone, ctx.country_code) or None,
+        "website": first_value(row.get("WEB")) or first_value(contact.get("WEB")) or None,
         "status": dicts.resolve_status(ctx, "Lead", status_id, fallback_status),
         "source": dicts.resolve_catalog(
             ctx, "SOURCE", row.get("SOURCE_ID"), "CRM Lead Source"
@@ -136,6 +146,22 @@ def _sync_lead(ctx, row: dict, fallback_status, has_comentarios: bool) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _linked_contact(ctx, row: dict) -> dict:
+    """Contacto de Bitrix24 vinculado al lead ({} si no hay o falla)."""
+    contact_id = row.get("CONTACT_ID")
+    if not contact_id or str(contact_id) == "0":
+        return {}
+    try:
+        return ctx.client.call("crm.contact.get", {"id": contact_id}) or {}
+    except Exception as e:
+        ctx.log(
+            "warning",
+            f"Lead {row.get('ID')}: no se pudo leer el contacto {contact_id}: {e}",
+            bitrix_id=row.get("ID"),
+        )
+        return {}
 
 
 def _comentarios(row: dict) -> str | None:

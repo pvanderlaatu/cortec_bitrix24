@@ -44,7 +44,8 @@ from cortec_bitrix24.utils import (
     truncate,
 )
 
-SELECT_FIELDS = ["*", "UF_*"]
+# "*" no incluye los campos multivalor de Bitrix24: se piden por nombre.
+SELECT_FIELDS = ["*", "UF_*", "PHONE", "EMAIL", "WEB", "IM"]
 
 # EMPLOYEES de Bitrix24 → opciones de `no_of_employees` en Frappe CRM.
 EMPLOYEES_MAP = {
