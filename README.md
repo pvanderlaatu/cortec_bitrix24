@@ -489,6 +489,10 @@ left unsilenced.
 
 Full notes for each version are on the [releases page](https://github.com/pvanderlaatu/cortec_bitrix24/releases).
 
+### 1.1.11 — 2026-11-09
+
+- New **Migrate → Full migration (from scratch)** button in Bitrix24 Migration Settings: it starts a real run that ignores the incremental filter and walks the whole portal, so already-migrated records can be corrected. Unchanged ones are still skipped by hash.
+
 ### 1.1.10 — 2026-11-09
 
 - Contacts, leads and companies now request the multi-value fields (`PHONE`, `EMAIL`, `WEB`, `IM`) by name: Bitrix24's `select: ["*"]` does not return them, so emails and phone numbers were being lost. To fix data already migrated, rerun those phases with an old `delta_since`.

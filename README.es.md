@@ -483,6 +483,10 @@ restaura, y una corrida real se aborta si falta algo por silenciar.
 
 Las notas completas de cada versión están en la [página de releases](https://github.com/pvanderlaatu/cortec_bitrix24/releases).
 
+### 1.1.11 — 2026-11-09
+
+- Nuevo botón **Migrar → Migración completa (desde cero)** en Bitrix24 Migration Settings: lanza una corrida real que ignora el filtro incremental y recorre todo el portal, para corregir lo ya migrado. Lo que no cambió se sigue omitiendo por hash.
+
 ### 1.1.10 — 2026-11-09
 
 - Contactos, leads y empresas piden por nombre los campos multivalor (`PHONE`, `EMAIL`, `WEB`, `IM`): el `select: ["*"]` de Bitrix24 no los devuelve, y por eso se perdían correos y teléfonos. Para corregir lo ya migrado hay que repetir esas fases con un `delta_since` antiguo.

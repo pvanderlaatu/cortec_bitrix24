@@ -1,6 +1,9 @@
 // Copyright (C) 2026 Corporación de Tecnología CORTEC S.R.L.
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+// Anterior a cualquier dato de Bitrix24: el filtro >DATE_MODIFY no excluye nada.
+const FECHA_DESDE_EL_PRINCIPIO = "2000-01-01 00:00:00";
+
 frappe.ui.form.on("Bitrix24 Migration Settings", {
 	refresh(frm) {
 		frm.add_custom_button(__("Probar conexión"), () => probar_conexion(frm));
@@ -8,6 +11,12 @@ frappe.ui.form.on("Bitrix24 Migration Settings", {
 		frm.add_custom_button(__("Corrida en seco"), () => iniciar(frm, true), __("Migrar"));
 
 		frm.add_custom_button(__("Migración real"), () => confirmar_real(frm), __("Migrar"));
+
+		frm.add_custom_button(
+			__("Migración completa (desde cero)"),
+			() => confirmar_completa(frm),
+			__("Migrar")
+		);
 
 		if (frm.doc.last_run) {
 			frm.add_custom_button(__("Ver última corrida"), () => {
@@ -89,10 +98,28 @@ function confirmar_real(frm) {
 	);
 }
 
-function iniciar(frm, dry_run) {
+function confirmar_completa(frm) {
+	// Una corrida real normal es incremental: solo lee lo modificado desde
+	// el fin de la última corrida completa. Esta ignora ese filtro y recorre
+	// todo el portal; lo ya migrado y sin cambios se omite por hash.
+	frappe.confirm(
+		__(
+			"Esto recorrerá <b>todo</b> el portal de Bitrix24, sin limitarse a lo modificado " +
+				"desde la última corrida, y actualizará los registros que hayan cambiado en " +
+				"<b>{0}</b>. Puede tardar mucho.<br><br>¿Continuar?",
+			[frappe.boot.sitename]
+		),
+		() => iniciar(frm, false, FECHA_DESDE_EL_PRINCIPIO)
+	);
+}
+
+function iniciar(frm, dry_run, delta_since) {
+	const args = { dry_run: dry_run ? 1 : 0 };
+	if (delta_since) args.delta_since = delta_since;
+
 	frappe.call({
 		method: "cortec_bitrix24.api.start_migration",
-		args: { dry_run: dry_run ? 1 : 0 },
+		args,
 		freeze: true,
 		freeze_message: __("Encolando la migración…"),
 		callback(r) {
